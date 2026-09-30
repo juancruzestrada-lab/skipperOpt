@@ -1,0 +1,152 @@
+{
+  "_comment": "Bayesian optimization config for SiSeRO module mod9. All bounds are physical units.",
+
+  "module": "skipper",
+  "amplifier": 1,
+  "nsamp": 1,
+  "nrow": 75,
+  "exposure_time": 2,
+
+  "lta": {
+    "script": "/home/skipper_lab/ltaDaemon-master/core/lta.sh",
+    "port": "8888"
+  },
+
+  "arduino": {
+    "port": "/dev/ttyUSB0"
+  },
+
+  "image": {
+    "output_base": "images",
+    "prefix": "optimize_"
+  },
+
+  "detector": {
+    "_comment": "Row/col slices into the FITS image array [r0:r1, c0:c1].",
+    "active": {
+      "rows": [2, 30],
+      "cols": [16, 56]
+    },
+    "overscan": {
+      "rows": [2, 30],
+      "cols": [89, 98]
+    }
+  },
+
+  "objective": {
+    "_comment": "F = min(|noise_overscan / gain|, max_baseline) + sum penalties.",
+    "max_baseline": 1000,
+    "penalties": [
+      {
+        "_comment": "Uncomment to activate. Penalizes inverted gain.",
+        "type": "negative_gain",
+        "coefficient": 0.5,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes overscan noise exceeding gain.",
+        "type": "noise_exceeds_gain",
+        "coefficient": 0.5,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes saturation / near-zero gain: max(0, 2*noise_os - noise_active).",
+        "type": "saturation",
+        "coefficient": 0.333,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes overscan charge level far from 0. Scale in ADU.",
+        "type": "gaussian_centering",
+        "coefficient": 1.0,
+        "power": 1.0,
+        "params": {
+          "region": "overscan",
+          "scale": 50000
+        },
+        "_disabled": true
+      }
+    ]
+  },
+
+  "optimizer": {
+    "_comment": "type: 'gp' | 'forest' | 'gbrt' | 'dummy'",
+    "type": "gp",
+    "n_calls": 30,
+    "n_initial_points": 16,
+    "random_state": 15,
+
+    "_comment_gp": "GP-specific kwargs below. Remove or ignore for forest/gbrt.",
+    "acq_func": "EI",
+    "initial_point_generator": "sobol",
+    "xi": 0.01,
+
+    "_comment_lcb": "Uncomment kappa if using acq_func='LCB'.",
+    "_kappa": 1.96,
+
+    "_comment_forest": "Uncomment base_estimator for forest/gbrt ('ET', 'RF', 'GBRT').",
+    "_base_estimator": "ET",
+
+    "_comment_n_points": "n_points: candidates sampled to optimize acquisition function (default 10000).",
+    "_n_points": 10000
+  },
+
+  "parameters": [
+    {
+      "_comment": "Drain gate voltage. LTA command: lta set vdd <val>",
+      "name": "Vdd",
+      "command_type": "set",
+      "lta_var": "vdd",
+      "bounds": [-23, -10],
+      "precision": 1
+    },
+    {
+      "_comment": "Drain voltage. LTA command: lta set vdrain <val>",
+      "name": "Vdrain",
+      "command_type": "set",
+      "lta_var": "vdrain",
+      "bounds": [-23, -10],
+      "precision": 1
+    },
+    {
+      "_comment": "Reset gate voltage. LTA command: lta set r <val>",
+      "name": "Vr",
+      "command_type": "set",
+      "lta_var": "vr",
+      "bounds": [-8, -5],
+      "precision": 1
+    },
+    {
+      "_comment": "H-clock delay. LTA command: lta delay_H_overlap <val>",
+      "name": "delay_H_overlap",
+      "command_type": "timing",
+      "lta_var": "delay_H_overlap",
+      "bounds": [10, 30],
+      "precision": 0
+    }
+  ],
+
+  "_examples_direct_and_timing": {
+    "_comment": "Examples of 'direct' and 'timing' command types (not active params).",
+    "_direct_example": {
+      "name": "NSAMP",
+      "command_type": "direct",
+      "lta_var": "NSAMP",
+      "bounds": [1, 16],
+      "precision": 0
+    },
+    "_timing_example": {
+      "name": "tS",
+      "command_type": "timing",
+      "lta_var": "tS",
+      "bounds": [100, 2000],
+      "precision": 0
+    }
+  }
+}
