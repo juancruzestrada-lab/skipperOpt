@@ -17,7 +17,7 @@
   },
 
   "image": {
-    "output_base": "images",
+    "output_base": "/home/skipper_lab/ltaDaemon-master/core/skipperOpt/images",
     "prefix": "optimize_"
   },
 
