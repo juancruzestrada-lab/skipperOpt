@@ -8,6 +8,10 @@ the acquisition agent for an image, then asks the objective agent to score
 that image, and returns the score. Everything else (search space, warm
 start, progress CSV, optimizer choice, saved results) is the same code
 path as optimize_sensor_LTA.py.
+
+With optimizer type "claude" the skopt minimizer is replaced by Claude
+choosing each point (agents/claude_optimizer.py); everything else is
+unchanged.
 """
 
 import csv
@@ -45,9 +49,10 @@ class OptimizerAgent:
         self.img_cfg      = cfg.get("image", {"output_base": "images",
                                               "prefix": "optimize_"})
 
-        self.acquisition = None
-        self.objective   = None
-        self.iteration   = 0
+        self.acquisition  = None
+        self.objective    = None
+        self.iteration    = 0
+        self.observations = []   # image stats per evaluation (used by "claude")
 
     # ------------------------------------------------------------------
     # Proxy objective: one image in, one F out
@@ -63,6 +68,7 @@ class OptimizerAgent:
             "evaluate", image_path=acquired["image_path"],
             iteration=self.iteration,
         )
+        self.observations.append(scored["stats"])
         return scored["F"]
 
     # ------------------------------------------------------------------
@@ -147,10 +153,19 @@ class OptimizerAgent:
                 writer, file_handle, self.param_cfgs, output_directory,
                 find_latest_fn=img.find_latest_fz_file,
             )
-            minimize_fn, opt_kwargs = bo.build_optimizer_call(
-                self.opt_cfg, space, objective_function, callback,
-                x0=x0, y0=y0,
-            )
+            if self.opt_cfg["type"] == "claude":
+                from .claude_optimizer import build_claude_call
+                minimize_fn, opt_kwargs = build_claude_call(
+                    self.opt_cfg, space, objective_function, callback,
+                    self.param_cfgs, self.cfg["objective"], self.observations,
+                    output_directory + file_name[:-4] + "_claude_decisions.jsonl",
+                    x0=x0, y0=y0,
+                )
+            else:
+                minimize_fn, opt_kwargs = bo.build_optimizer_call(
+                    self.opt_cfg, space, objective_function, callback,
+                    x0=x0, y0=y0,
+                )
 
             print(
                 f"\nStarting {self.opt_cfg['type'].upper()} optimization "

@@ -46,6 +46,33 @@ which is handy for debugging (turn off with `--no-message-log`).
 If an agent raises an error, the run stops with that agent's traceback and
 the other agent processes are shut down.
 
+## Claude as the optimizer
+
+Set the optimizer type to `"claude"` (see `config_skipper_claude.json`) and
+Claude chooses the points instead of the Gaussian process:
+
+```bash
+pip install anthropic
+export ANTHROPIC_API_KEY=...
+python optimize_agents.py --config config_skipper_claude.json
+```
+
+- The first `n_initial_points` are a Sobol design, as in the GP runs; after
+  that, each iteration Claude sees every measurement so far (parameters in
+  physical units, F, and the image statistics noise/charge/gain), explains
+  its choice, and returns the next point as JSON. Points are clipped to
+  the bounds.
+- `model` (default `claude-opus-5-5`), `effort` (`low` … `max`, default
+  `high`) and free-text `notes` for Claude go in the `optimizer` block.
+- Claude's reasoning is printed and saved to `<run>_claude_decisions.jsonl`.
+- Progress CSV, `gp_results.csv`, warm restart (`--resume`), the `.pkl`
+  dump and the convergence plot work exactly as with `gp`, so GP and Claude
+  campaigns can be compared directly or resumed from one another.
+- Cost is one API call per guided iteration (22 calls for the example).
+
+Code: `agents/claude_optimizer.py`. The acquisition and objective agents are
+unchanged.
+
 ### Adding an LLM supervisor later
 
 Every agent answers `handle({"kind": ..., "payload": {...}})` with a JSON
@@ -59,9 +86,10 @@ optimizer.
 
 `tests/` runs both drivers against simulated hardware (`tests/fake_hw`: a
 fake `lta.sh`, ESP32 and `fitsio`) and checks they give identical results,
-including warm restart:
+including warm restart, and checks the Claude optimizer with a fake
+Claude client (no network or API key needed):
 
 ```bash
-pip install scikit-optimize pandas matplotlib pytest
+pip install scikit-optimize pandas matplotlib pytest anthropic
 python -m pytest tests -v
 ```
