@@ -1,0 +1,163 @@
+{
+  "_comment": "GP vs Claude comparison, Claude side: amp 1 (HDU 2), 30 images, 8 Sobol + 22 guided, notebook off so Claude starts without prior knowledge.",
+  "module": "skipper",
+  "amplifier": 2,
+  "nsamp": 1,
+  "nrow": 75,
+  "exposure_time": 2,
+  "lta": {
+    "script": "/home/skipper_lab/ltaDaemon-master/core/lta.sh",
+    "port": "8888"
+  },
+  "arduino": {
+    "port": "/dev/ttyUSB0"
+  },
+  "image": {
+    "output_base": "/home/skipper_lab/ltaDaemon-master/core/skipperOpt/images",
+    "prefix": "optimize_"
+  },
+  "detector": {
+    "_comment": "Row/col slices into the FITS image array [r0:r1, c0:c1].",
+    "active": {
+      "rows": [
+        2,
+        30
+      ],
+      "cols": [
+        16,
+        56
+      ]
+    },
+    "overscan": {
+      "rows": [
+        2,
+        30
+      ],
+      "cols": [
+        89,
+        98
+      ]
+    }
+  },
+  "objective": {
+    "_comment": "F = min(|noise_overscan / gain|, max_baseline) + sum penalties.",
+    "max_baseline": 1000,
+    "penalties": [
+      {
+        "_comment": "Uncomment to activate. Penalizes inverted gain.",
+        "type": "negative_gain",
+        "coefficient": 0.5,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes overscan noise exceeding gain.",
+        "type": "noise_exceeds_gain",
+        "coefficient": 0.5,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes saturation / near-zero gain: max(0, 2*noise_os - noise_active).",
+        "type": "saturation",
+        "coefficient": 0.333,
+        "power": 0.333,
+        "params": {},
+        "_disabled": true
+      },
+      {
+        "_comment": "Penalizes overscan charge level far from 0. Scale in ADU.",
+        "type": "gaussian_centering",
+        "coefficient": 1.0,
+        "power": 1.0,
+        "params": {
+          "region": "overscan",
+          "scale": 50000
+        },
+        "_disabled": true
+      }
+    ]
+  },
+  "optimizer": {
+    "_comment": "type 'claude': Claude picks each point after a Sobol start. Needs `pip install anthropic` and ANTHROPIC_API_KEY.",
+    "type": "claude",
+    "n_calls": 30,
+    "n_initial_points": 8,
+    "random_state": 15,
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "notes": "Optional free text for Claude: detector quirks, safe ranges, what worked before.",
+    "notebook": false
+  },
+  "parameters": [
+    {
+      "_comment": "Drain gate voltage. LTA command: lta set vdd <val>",
+      "name": "Vdd",
+      "command_type": "set",
+      "lta_var": "vdd",
+      "bounds": [
+        -23,
+        -10
+      ],
+      "precision": 1
+    },
+    {
+      "_comment": "Drain voltage. LTA command: lta set vdrain <val>",
+      "name": "Vdrain",
+      "command_type": "set",
+      "lta_var": "vdrain",
+      "bounds": [
+        -23,
+        -10
+      ],
+      "precision": 1
+    },
+    {
+      "_comment": "Reset gate voltage. LTA command: lta set r <val>",
+      "name": "Vr",
+      "command_type": "set",
+      "lta_var": "vr",
+      "bounds": [
+        -8,
+        -5
+      ],
+      "precision": 1
+    },
+    {
+      "_comment": "H-clock delay. LTA command: lta delay_H_overlap <val>",
+      "name": "delay_H_overlap",
+      "command_type": "timing",
+      "lta_var": "delay_H_overlap",
+      "bounds": [
+        10,
+        30
+      ],
+      "precision": 0
+    }
+  ],
+  "_examples_direct_and_timing": {
+    "_comment": "Examples of 'direct' and 'timing' command types (not active params).",
+    "_direct_example": {
+      "name": "NSAMP",
+      "command_type": "direct",
+      "lta_var": "NSAMP",
+      "bounds": [
+        1,
+        16
+      ],
+      "precision": 0
+    },
+    "_timing_example": {
+      "name": "tS",
+      "command_type": "timing",
+      "lta_var": "tS",
+      "bounds": [
+        100,
+        2000
+      ],
+      "precision": 0
+    }
+  }
+}

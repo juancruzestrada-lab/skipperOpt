@@ -123,6 +123,32 @@ without changing the agents, for example a supervisor that reads the
 `stats` from each evaluation and flags bad images before they reach the
 optimizer.
 
+## GP vs. Claude comparison on one amplifier
+
+Three ready-made configs, all for amplifier 1 (`"amplifier": 2`: the value is
+the FITS HDU index, one higher than the amplifier number):
+
+| Config | What it does |
+|---|---|
+| `config_compare_reference.json` | 3 images at a fixed reference point (bounds collapsed to one value) |
+| `config_compare_gp.json` | GP, 30 images: 8 Sobol + 22 guided |
+| `config_compare_claude.json` | Claude, 30 images: 8 Sobol + 22 guided, lab notebook off |
+
+Run them back to back in one session:
+
+```bash
+python optimize_agents.py --config config_compare_reference.json
+python optimize_agents.py --config config_compare_gp.json
+python optimize_agents.py --config config_compare_reference.json
+python optimize_agents.py --config config_compare_claude.json
+python optimize_agents.py --config config_compare_reference.json
+```
+
+The three reference checks should agree; if they do not, the detector state
+changed during the comparison. Optimizer type `"dummy"` cannot be used for
+fixed-point runs: `bo_core` passes it `n_initial_points`, which
+`dummy_minimize` does not accept.
+
 ## Tests
 
 `tests/` runs both drivers against simulated hardware (`tests/fake_hw`: a
