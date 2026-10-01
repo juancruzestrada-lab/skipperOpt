@@ -33,6 +33,10 @@
         showstringspaces=false,breaklines=true}
 
 \newcommand{\fillin}[1]{\textcolor{warm}{\textbf{[#1]}}}
+% Amplifier (FITS extension) used in each campaign of Oct 1, 2026.  %% FILL IN
+\newcommand{\ampA}{\fillin{amp ?}}   % campaign 1 (run 002)
+\newcommand{\ampB}{\fillin{amp ?}}   % campaign 2 (run 003)
+\newcommand{\ampC}{\fillin{amp ?}}   % campaign 3 (run 004), not working
 
 \tikzset{
   box/.style={draw=accent,thick,rounded corners=3pt,fill=soft,align=center,
@@ -64,6 +68,7 @@
     \item Agentic version: three cooperating agents
     \item Claude as the optimizer
     \item Running it in the lab: what went wrong and how it was fixed
+    \item Results: three campaigns on three amplifiers
     \item Cost
     \item Lab notebook: memory across campaigns
     \item GP vs.\ Claude, open questions, next steps
@@ -318,15 +323,16 @@
 
 \begin{frame}[fragile]{What Claude sees on each turn}
 \begin{lstlisting}
-Measurements so far (16):
-# | Vdd | Vdrain | Vr | delay_H_overlap | F | noise_overscan | ... | gain
-1 | -16.5 | -16.5 | -6.5 | 20 | 0.071 | 410.2 | ... | 5790
+Measurements so far (18):
+# | Vdd | Vdrain | Vr | delay_H_overlap | F | noise_overscan | noise_active | charge_overscan | charge_active | gain
+1 | -12.0 | -20.7 | -7.8 | 17.0 | 2.7763 | 869 | 920.6 | -1104 | -791 | 313
 ...
-8 | -10.3 | -12.5 | -5.2 | 15 | 9.007 | 3.19e+04 | ... | -3544
+8 | -10.3 | -12.5 | -5.2 | 15.0 | 15.987 | 879.3 | 898.6 | -485 | -540 | -55
+9 | -14.5 | -18.8 | -6.3 | 21.0 | 0.04715 | 682.7 | 1769 | 3365 | 1.784e+04 | 1.448e+04
 ...
-16 | ... | 0.0296 | 636.4 | ... | 2.15e+04
+18 | -17.5 | -20.2 | -5.0 | 30.0 | 0.02422 | 685.8 | 2456 | 6107 | 3.442e+04 | 2.832e+04
 
-Measurements left in this campaign, including the next one: 14.
+Measurements left in this campaign, including the next one: 12.
 Choose the next point.
 \end{lstlisting}
   \small
@@ -336,8 +342,7 @@ Choose the next point.
     \item a \textbf{summary of Claude's thinking} (why this point)
     \item tokens used and the estimated cost
   \end{itemize}
-  {\scriptsize Table layout as sent to Claude. Values in rows 1 and 16 are illustrative;
-   row 8 shows the statistics of the broken lab image.}
+  {\scriptsize Real rows from campaign 2 (Oct 1, 2026), as sent to Claude; some rows omitted.}
 \end{frame}
 
 % ===========================================================================
@@ -368,39 +373,95 @@ Choose the next point.
   retries, checkpoints) matters as much as the optimizer.
 \end{frame}
 
-\begin{frame}{Results so far}
+% ===========================================================================
+\section{Results}
+% ===========================================================================
+
+\begin{frame}{Three campaigns, three amplifiers (Oct 1, 2026)}
+  \small
+  Same config: 30 images each, the same 8 Sobol starting points, then 22 chosen by Claude
+  (Opus 5.5); the lab notebook carried over from one campaign to the next.
+
+  \vspace{2mm}
+  \begin{tabular}{llllll}
+    \toprule
+    & Amplifier & Best $F$ & Best point ($V_{dd}, V_{drain}, V_r$, delay) & $\sigma_{os}$ (ADU) & Duration \\
+    \midrule
+    Campaign 1 & \ampA & 0.0189 & $(-14.5,\,-18.8,\,-6.3,\,21)$ & $\approx 700$ & 12 min \\
+    Campaign 2 & \ampB & 0.0242 & $(-17.5,\,-20.2,\,-5.0,\,30)$ & $\approx 700$ & 12 min \\
+    Campaign 3 & \ampC & 1.13   & $(-16.9,\,-19.6,\,-7.0,\,22)$ & $3$--$4.5\times10^{4}$ & 11 min \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{3mm}
+  \begin{itemize}
+    \item Campaigns 1 and 2: working amplifiers, $F \approx 0.02$--$0.03$ in the good region;
+          repeats at a fixed setting scatter by about $\pm 0.005$
+    \item \textbf{Campaign 3: amplifier not working.} Overscan noise $\sim$50$\times$ higher,
+          overscan level $\approx -4.8\times10^{5}$ ADU; $F$ never below 1.1
+    \item Repeatable failures: the shallow corner $(-10.3, -12.5, -5.2)$ in all three
+          campaigns; $V_{drain}$ less negative than $V_{dd}$ in campaigns 1 and 2
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Performance: every image, three campaigns}
+  \centering
+  \includegraphics[width=\textwidth]{figures/per_image_F.pdf}
+
+  \vspace{1mm}
+  \small
+  \begin{itemize}
+    \item Dots: $F$ of each image; line: best so far; $\times$: no signal (gain $< 1000$)
+    \item After the Sobol start Claude stays in or near the good region and refines:
+          in campaign 2 every Claude-chosen image has $F < 0.05$; it also re-measures
+          promising points to check reproducibility
+    \item Campaign 1: a signal dropout (images 11--18, gain $\approx 0$, unrelated to
+          the settings) was recognized by Claude and reported in the notebook
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{What Claude found: the $V_{dd}$--$V_{drain}$ relation}
   \begin{columns}[T]
-    \begin{column}{0.5\textwidth}
-      First Claude campaigns (both interrupted):
-      \begin{itemize}\small
-        \item run stopped at 16 images (API overload):\\
-              best $F = 0.0296$ (\texttt{optimize\_76.fz}),
-              $\sigma_{os} = 636$ ADU, gain $= 21\,500$ ADU
-        \item earlier run stopped at 8 images (API key):
-              best $F = 1.47$; broken output at $V_{dd} = -10.3$\,V
-      \end{itemize}
-      \vspace{2mm}
-      To do:
-      \begin{itemize}\small
-        \item complete campaign; GP vs.\ Claude on the same day
-        \item re-measure best points (noise of $F$)
-      \end{itemize}
-      \fillin{FILL IN: final numbers}
-    \end{column}
-    \begin{column}{0.46\textwidth}
+    \begin{column}{0.68\textwidth}
       \centering
-      \IfFileExists{figures/convergence.pdf}{%
-        \includegraphics[width=\linewidth]{figures/convergence.pdf}%
-      }{%
-        \begin{tikzpicture}
-          \node[box,minimum width=55mm,minimum height=35mm,draw=warm,fill=white]
-            {\scriptsize Convergence plot\\[1mm]
-             \scriptsize copy \texttt{results-skipper.pdf} to\\
-             \scriptsize \texttt{figures/convergence.pdf}};
-        \end{tikzpicture}%
-      }
+      \includegraphics[width=\linewidth]{figures/vdd_vdrain.pdf}
+    \end{column}
+    \begin{column}{0.30\textwidth}
+      \small
+      \begin{itemize}
+        \item Shaded half: $V_{drain}$ less negative than $V_{dd}$ $\Rightarrow$
+              negative gain (no usable image)
+        \item Good points: $V_{drain}$ about 2.5--3\,V more negative than $V_{dd}$
+        \item Claude's own conclusion, written in the notebook:\\
+              {\scriptsize\emph{``F is driven almost entirely by gain [\dots] most
+              sensitive: the Vdd/Vdrain relationship''}}
+      \end{itemize}
     \end{column}
   \end{columns}
+\end{frame}
+
+\begin{frame}{Why this point? Claude's thinking summaries}
+  \small
+  Real excerpts from the per-iteration log (\texttt{<run>\_claude\_decisions.jsonl}):
+
+  \vspace{2mm}
+  \begin{block}{Campaign 2, image 9: using the notebook}
+    \scriptsize\emph{``The notebook's recorded best is (-14.5,-18.8,-6.3,21), so I should
+    measure that point directly to verify reproducibility and use it as a reference.''}
+    \quad (It gave $F = 0.047$, not 0.019.)
+  \end{block}
+  \vspace{1mm}
+  \begin{block}{Campaign 2, image 21: reasoning about noise and boundaries}
+    \scriptsize\emph{``The repeat of trial \#18 showed noticeable noise ($\sim$0.01 variation)
+    [\dots] I decide exploring Vr is valuable since we're sitting at a boundary value --
+    I'll test Vr around -5.6 to -6.0 [\dots] to confirm whether -5.0 is truly optimal or
+    just unexplored territory.''}
+  \end{block}
+  \vspace{1mm}
+  \begin{block}{Campaign 3, image 9: noticing the broken amplifier}
+    \scriptsize\emph{``These conditions look drastically different from before -- noise is
+    much higher, F values are now in the 1.6-3 range instead of 0.02-0.03 [\dots]''}
+  \end{block}
 \end{frame}
 
 % ===========================================================================
@@ -422,12 +483,23 @@ Choose the next point.
       \end{tabular}
 
       \vspace{3mm}
-      Per campaign (30 calls, 8 Sobol):
-      \begin{itemize}\small
-        \item 22 decision requests + 1 notebook entry
-        \item fixed instructions cached $\rightarrow$ cheap repeats
-        \item measured: \fillin{FILL IN from Console}
-      \end{itemize}
+      Measured, 22 decisions per campaign (list-price estimate):
+
+      \vspace{1mm}
+      \begin{tabular}{lrrr}
+        \toprule
+        & tokens in & out & cost \\
+        \midrule
+        Campaign 1 & 49k & 9.7k & \$0.31 \\
+        Campaign 2 & 78k & 9.0k & \$0.31 \\
+        Campaign 3 & 111k & 11.2k & \$0.39 \\
+        \bottomrule
+      \end{tabular}
+
+      \vspace{1mm}
+      {\scriptsize Input includes cached reads (21k, 47k, 75k), which grow with the
+       notebook. Plus one notebook-entry request per campaign.
+       About \$1 for all three campaigns.}
     \end{column}
     \begin{column}{0.46\textwidth}
       Tracked automatically:
@@ -440,8 +512,8 @@ Choose the next point.
       \vspace{2mm}
       \begin{block}{Perspective}
         \scriptsize
-        API cost per campaign is small compared to lab time per image;
-        every image the optimizer saves is worth far more.
+        $\approx$ \$0.01--0.02 per decision, $\approx$ \$0.35 per 12-minute campaign:
+        small compared to the lab time per image.
       \end{block}
     \end{column}
   \end{columns}
@@ -451,7 +523,7 @@ Choose the next point.
 \section{Lab notebook}
 % ===========================================================================
 
-\begin{frame}[fragile]{Lab notebook: memory across campaigns}
+\begin{frame}{Lab notebook: memory across campaigns}
   \begin{columns}[T]
     \begin{column}{0.46\textwidth}
       \small
@@ -463,24 +535,58 @@ Choose the next point.
               instructions as \emph{prior knowledge}
         \item Current measurements take priority over old entries
         \item Plain Markdown file: operators read, edit, add their own notes
+        \item Header line written by the code (date, module, best point);
+              text by Claude
       \end{itemize}
     \end{column}
     \begin{column}{0.52\textwidth}
-\begin{lstlisting}
-# Claude lab notebook
+      \scriptsize
+      \begin{block}{Entry 1 (campaign 1), excerpt}
+        \emph{Measurements \#11--18 all had near-zero or negative gain. This suggests an
+        episode where the LED or signal was lost, rather than a parameter effect.}\\[1mm]
+        \emph{Suggestions: start at (-14.5, -18.8, -6.3, 21) [\dots] interleave periodic
+        re-measurements of a reference point to detect LED or signal dropouts.}
+      \end{block}
+      \vspace{1mm}
+      \begin{block}{Entry 2 (campaign 2), excerpt}
+        \emph{Last campaign's best point (-14.5, -18.8, -6.3, 21) gave only 0.047 this
+        time. Its earlier 0.019 was probably a lucky draw or reflects changed conditions.}\\[1mm]
+        \emph{Use at least 3 repeats per candidate. Single-shot differences below about
+        0.01 are not meaningful.}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
 
-## 2026-10-01 21:40 | module skipper |
-   30 measurements (22 new) |
-   best F = 0.0296 at Vdd=..., Vr=...
-
-- Best region: ...
-- Broken: Vdd above ~ -11 V
-  (negative gain, sigma_os > 30000 ADU)
-- Most sensitive to: ...
-- Next time: ...
-\end{lstlisting}
-      {\scriptsize Header written by the code (facts); text by Claude.
-       Illustrative entry.}
+\begin{frame}{Lab notebook across amplifiers: a lesson}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \scriptsize
+      \begin{block}{Entry 3 (campaign 3), excerpt}
+        \emph{Setup state changed sharply this campaign. noise\_overscan was 3.1--4.5e4 ADU,
+        about 50$\times$ the $\sim$700 ADU of earlier campaigns. [\dots] F values from this
+        campaign are not comparable with earlier entries. The likely cause is a hardware,
+        offset or cabling change rather than a parameter effect, but this is unconfirmed.}\\[1mm]
+        \emph{Before optimizing, measure a reference point and check noise\_overscan and
+        charge\_overscan. [\dots] investigate the readout chain or offset first.}
+      \end{block}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \small
+      \begin{itemize}
+        \item Each campaign used a \textbf{different amplifier}, but the notebook was
+              shared and the amplifier was not in it
+        \item Claude correctly detected that conditions had changed, and that the
+              old best points no longer held
+        \item It could only guess the cause (``hardware, offset or cabling'')
+        \item The third amplifier was in fact not working: the right call was to stop
+              optimizing and check the readout chain, as the entry says
+      \end{itemize}
+      \vspace{1mm}
+      \begin{block}{Improvement}
+        \scriptsize Record the amplifier in each entry, or keep one notebook per
+        amplifier (\texttt{"notebook"} path in the config).
+      \end{block}
     \end{column}
   \end{columns}
 \end{frame}
@@ -524,6 +630,8 @@ Choose the next point.
           \end{itemize}
     \item \textbf{Robustness}: API key check at start-up, flag broken images
           (negative gain), cheaper models (Haiku)
+    \item \textbf{Notebook per amplifier}, and a reference-point check at the start of
+          each campaign (both suggested by Claude's own notebook entries)
   \end{itemize}
 \end{frame}
 
@@ -537,6 +645,8 @@ Choose the next point.
     \item Made it lab-robust: absolute paths, retries, per-image checkpoints
     \item Added cost tracking and a lab notebook that carries lessons from
           one campaign to the next
+    \item Three 30-image campaigns in about 12 minutes each, about \$0.35 each:
+          $F \approx 0.02$ on two amplifiers; the third flagged as not working
   \end{enumerate}
   \vspace{4mm}
   \centering
