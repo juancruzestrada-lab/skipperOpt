@@ -120,6 +120,46 @@ def test_request_contents():
     assert "Measurements left in this campaign, including the next one: 1" in user
 
 
+def test_usage_and_cost(tmp_path, capsys):
+    from types import SimpleNamespace as NS
+
+    class UsageClient(FakeClient):
+        def create(self, **params):
+            r = super().create(**params)
+            r.model = params["model"]
+            r.usage = NS(input_tokens=1000, output_tokens=2000,
+                         cache_creation_input_tokens=3000,
+                         cache_read_input_tokens=4000)
+            return r
+
+    log = tmp_path / "decisions.jsonl"
+    client = UsageClient([{"Vdd": -17, "delay": 18}, {"Vdd": -16, "delay": 19}])
+    res = claude_minimize(quadratic, SPACE, n_calls=3, param_cfgs=PARAMS,
+                          obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                          decision_log=str(log), client=client)
+
+    # Opus 5.5: $4 in, $20 out, $5 cache write, $0.20 cache read per MTok.
+    per_request = (1000 * 4 + 2000 * 20 + 3000 * 5 + 4000 * 0.20) / 1e6
+    entries = [json.loads(l) for l in open(log)]
+    assert [e["cost_usd"] for e in entries] == pytest.approx([per_request] * 2)
+    assert entries[0]["usage"]["cache_read_input_tokens"] == 4000
+    assert res.specs["usage"]["requests"] == 2
+    assert res.specs["usage"]["output_tokens"] == 4000
+    assert res.specs["usage"]["cost_usd_estimate"] == pytest.approx(2 * per_request)
+    out = capsys.readouterr().out
+    assert "Claude tokens: 8000 in, 2000 out" in out
+    assert "Claude usage: 2 requests, 16000 input tokens (8000 from cache)" in out
+
+
+def test_cost_estimate_by_model():
+    u = {"input_tokens": 1_000_000, "output_tokens": 0,
+         "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    assert co.estimate_cost("claude-opus-5-5", u) == pytest.approx(4.0)
+    assert co.estimate_cost("claude-opus-5", u) == pytest.approx(5.0)
+    assert co.estimate_cost("claude-haiku-4-5-20251001", u) == pytest.approx(1.0)
+    assert co.estimate_cost("some-future-model", u) is None
+
+
 def test_temporary_api_errors_are_retried(monkeypatch):
     waits = []
     monkeypatch.setattr(co, "_sleep", waits.append)
@@ -210,6 +250,7 @@ def test_agents_end_to_end_with_claude(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Starting CLAUDE optimization" in proc.stdout
     assert proc.stdout.count("Claude proposes:") == 2
+    assert "Claude usage: 2 requests" in proc.stdout
     assert proc.stdout.count("(summary): Step from measurement") == 2
 
     (out,) = glob.glob(str(tmp_path / "images" / "skipper" / "ai" / "*"))

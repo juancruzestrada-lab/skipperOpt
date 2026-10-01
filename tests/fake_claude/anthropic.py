@@ -38,7 +38,11 @@ class _Messages:
         if fail_after is not None and len(calls) > int(fail_after):
             raise RuntimeError("fake permanent API failure")
         summary, answer = _propose(params)
+        usage = SimpleNamespace(input_tokens=200, output_tokens=300,
+                                cache_creation_input_tokens=0,
+                                cache_read_input_tokens=1000)
         return SimpleNamespace(stop_reason="end_turn", stop_details=None,
+                               model=params["model"], usage=usage,
                                content=[SimpleNamespace(type="thinking",
                                                         thinking=summary),
                                         SimpleNamespace(type="text",

@@ -26,8 +26,8 @@ Loop
    reasons about it, and returns the next point to measure as JSON.
 3. The point is clipped to the bounds, measured, and appended to the history.
 
-Every decision (proposed point + a summary of Claude's thinking, as
-returned by the API) is appended to <run>_claude_decisions.jsonl next to
+Every decision (proposed point, a summary of Claude's thinking as returned
+by the API, tokens used and a cost estimate) is appended to <run>_claude_decisions.jsonl next to
 the progress CSV. The prompt deliberately does not ask Claude to write its
 reasoning into the answer: Opus 5.5 declines such requests
 ("reasoning_extraction"), so the explanation comes from the summarized
@@ -170,6 +170,41 @@ def _create_with_retry(client, **params):
             _sleep(wait)
 
 
+# Standard list prices, USD per million tokens:
+# (input, output, cache write (5-minute), cache read). Estimates only; the
+# Console's Usage and Cost pages are authoritative. Thinking tokens are
+# billed as output and are included in output_tokens.
+PRICES_PER_MTOK = {
+    "claude-opus-5-5":   (4.00, 20.00, 5.00, 0.20),
+    "claude-opus-5":     (5.00, 25.00, 6.25, 0.50),
+    "claude-sonnet-5-5": (2.00, 10.00, 2.50, 0.20),
+    "claude-haiku-4-5":  (1.00,  5.00, 1.25, 0.10),
+}
+_USAGE_FIELDS = ("input_tokens", "output_tokens",
+                 "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def _usage_of(response) -> dict:
+    usage = getattr(response, "usage", None)
+    return {k: int(getattr(usage, k, 0) or 0) for k in _USAGE_FIELDS}
+
+
+def estimate_cost(model: str, usage: dict):
+    """USD estimate for the given token counts, or None for unknown models."""
+    matches = [m for m in PRICES_PER_MTOK if model.startswith(m)]
+    if not matches:
+        return None
+    p_in, p_out, p_write, p_read = PRICES_PER_MTOK[max(matches, key=len)]
+    return (usage["input_tokens"] * p_in
+            + usage["output_tokens"] * p_out
+            + usage["cache_creation_input_tokens"] * p_write
+            + usage["cache_read_input_tokens"] * p_read) / 1e6
+
+
+def _fmt_cost(cost) -> str:
+    return f"≈ ${cost:.3f}" if cost is not None else "cost unknown for this model"
+
+
 def _ask_claude(client, model, effort, max_tokens, system, schema, user):
     response = _create_with_retry(
         client,
@@ -194,6 +229,11 @@ def _ask_claude(client, model, effort, max_tokens, system, schema, user):
         b.thinking for b in response.content
         if b.type == "thinking" and getattr(b, "thinking", "")
     )
+    # A refusal fallback can answer with another model; price what ran.
+    served_by = getattr(response, "model", None)
+    decision["served_by"] = served_by if isinstance(served_by, str) else model
+    decision["usage"] = _usage_of(response)
+    decision["cost_usd"] = estimate_cost(decision["served_by"], decision["usage"])
     return decision
 
 
@@ -252,6 +292,10 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
         result = record(x)
 
     # 2. Claude-guided iterations.
+    total_usage = dict.fromkeys(_USAGE_FIELDS, 0)
+    total_cost  = 0.0
+    n_requests  = 0
+
     for _ in range(n_calls - n_init):
         remaining = n_calls - (len(Xi) - n_prior)
         user = (
@@ -274,6 +318,17 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
         print(f"Claude proposes: {point}")
         if decision["thinking_summary"]:
             print(f"Claude's thinking (summary): {decision['thinking_summary']}")
+
+        n_requests += 1
+        for k in _USAGE_FIELDS:
+            total_usage[k] += decision["usage"][k]
+        if total_cost is not None:
+            total_cost = (None if decision["cost_usd"] is None
+                          else total_cost + decision["cost_usd"])
+        u = decision["usage"]
+        print(f"  Claude tokens: {u['input_tokens'] + u['cache_creation_input_tokens'] + u['cache_read_input_tokens']} in, "
+              f"{u['output_tokens']} out, {_fmt_cost(decision['cost_usd'])}; "
+              f"campaign so far {_fmt_cost(total_cost)}")
         if decision_log:
             with open(decision_log, "a") as f:
                 f.write(json.dumps({
@@ -281,6 +336,17 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                     "iteration": len(Xi) + 1, "model": model, **decision,
                 }) + "\n")
         result = record(x_norm)
+
+    if n_requests:
+        total_in = (total_usage["input_tokens"]
+                    + total_usage["cache_creation_input_tokens"]
+                    + total_usage["cache_read_input_tokens"])
+        print(f"\nClaude usage: {n_requests} requests, {total_in} input tokens "
+              f"({total_usage['cache_read_input_tokens']} from cache), "
+              f"{total_usage['output_tokens']} output tokens, "
+              f"{_fmt_cost(total_cost)} (estimate; see the Console for actual spend)")
+    specs["usage"] = {"requests": n_requests, **total_usage,
+                      "cost_usd_estimate": total_cost}
 
     if result is None:
         result = create_result(Xi, yi, space, rng, specs)

@@ -78,6 +78,11 @@ python optimize_agents.py --config config_skipper_claude.json
   dump and the convergence plot work exactly as with `gp`, so GP and Claude
   campaigns can be compared directly or resumed from one another.
 - Cost is one API call per guided iteration (22 calls for the example).
+  Each iteration prints the tokens used and a cost estimate plus the running
+  campaign total; the end of the run prints a summary. The same numbers are
+  saved per iteration in `<run>_claude_decisions.jsonl` and in the result
+  `.pkl` (`specs["usage"]`). Estimates use list prices; the Console's Usage
+  and Cost pages show what was actually billed.
 - If the API is temporarily unavailable (overloaded, rate limited, server
   or network error), the request is retried with growing waits for up to
   about 15 minutes before the run stops. A bad key or bad request stops
