@@ -2,7 +2,7 @@
 Tests for the Claude optimizer (agents/claude_optimizer.py) using a fake
 Claude client: no network, no API key.
 
-    python -m pytest tests -v
+    python3 -m pytest tests -v
 """
 
 import glob

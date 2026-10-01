@@ -9,9 +9,9 @@ acquisition and objective evaluation run in their own processes.
 
 Usage
 -----
-    python optimize_agents.py --config config_skipper.json
-    python optimize_agents.py --config config_skipper.json --amplifier 2
-    python optimize_agents.py --config config_skipper.json --resume path/to/gp_results.csv
+    python3 optimize_agents.py --config config_skipper.json
+    python3 optimize_agents.py --config config_skipper.json --amplifier 2
+    python3 optimize_agents.py --config config_skipper.json --resume path/to/gp_results.csv
 """
 
 import argparse

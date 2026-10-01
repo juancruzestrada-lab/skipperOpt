@@ -12,9 +12,9 @@ Bayesian optimization of Skipper-CCD operating parameters with an LTA readout.
 Both take the same options and config and write the same output files:
 
 ```bash
-python optimize_agents.py --config config_skipper.json
-python optimize_agents.py --config config_skipper.json --amplifier 2
-python optimize_agents.py --config config_skipper.json --resume images/skipper/ai/<date>/gp_results.csv
+python3 optimize_agents.py --config config_skipper.json
+python3 optimize_agents.py --config config_skipper.json --amplifier 2
+python3 optimize_agents.py --config config_skipper.json --resume images/skipper/ai/<date>/gp_results.csv
 ```
 
 ## The agents
@@ -56,11 +56,11 @@ Set the optimizer type to `"claude"` (see `config_skipper_claude.json`) and
 Claude chooses the points instead of the Gaussian process:
 
 ```bash
-pip install anthropic
+python3 -m pip install anthropic
 # Replace the text in quotes with your own key from
 # https://platform.claude.com (API Keys). It starts with sk-ant-
 export ANTHROPIC_API_KEY='sk-ant-REPLACE-WITH-YOUR-KEY'
-python optimize_agents.py --config config_skipper_claude.json
+python3 optimize_agents.py --config config_skipper_claude.json
 ```
 
 - The first `n_initial_points` are a Sobol design, as in the GP runs; after
@@ -137,11 +137,11 @@ the FITS HDU index, one higher than the amplifier number):
 Run them back to back in one session:
 
 ```bash
-python optimize_agents.py --config config_compare_reference.json
-python optimize_agents.py --config config_compare_gp.json
-python optimize_agents.py --config config_compare_reference.json
-python optimize_agents.py --config config_compare_claude.json
-python optimize_agents.py --config config_compare_reference.json
+python3 optimize_agents.py --config config_compare_reference.json
+python3 optimize_agents.py --config config_compare_gp.json
+python3 optimize_agents.py --config config_compare_reference.json
+python3 optimize_agents.py --config config_compare_claude.json
+python3 optimize_agents.py --config config_compare_reference.json
 ```
 
 The three reference checks should agree; if they do not, the detector state
@@ -157,6 +157,6 @@ including warm restart, and checks the Claude optimizer with a fake
 Claude client (no network or API key needed):
 
 ```bash
-pip install scikit-optimize pandas matplotlib pytest anthropic
-python -m pytest tests -v
+python3 -m pip install scikit-optimize pandas matplotlib pytest anthropic
+python3 -m pytest tests -v
 ```

@@ -43,7 +43,7 @@ the notebook into Claude's instructions as prior knowledge, so each run
 starts from what earlier runs found. The file is plain text: read it, edit
 it, delete entries that no longer apply. "notebook": false turns it off.
 
-Needs `pip install anthropic` and an API key in ANTHROPIC_API_KEY (or an
+Needs `python3 -m pip install anthropic` and an API key in ANTHROPIC_API_KEY (or an
 `ant auth login` profile).
 """
 

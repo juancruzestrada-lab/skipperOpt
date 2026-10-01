@@ -1,7 +1,7 @@
 """
 Figures for the presentation, from the run logs in ../data.
 
-    cd docs/presentation/figures && python make_figures.py
+    cd docs/presentation/figures && python3 make_figures.py
 """
 import json
 import os

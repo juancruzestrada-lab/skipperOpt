@@ -5,7 +5,7 @@ Both drivers run against simulated hardware (tests/fake_hw: a fake lta.sh,
 ESP32 and fitsio) and must produce identical optimization results, progress
 CSVs and image files.
 
-    python -m pytest tests -v
+    python3 -m pytest tests -v
 """
 
 import glob
