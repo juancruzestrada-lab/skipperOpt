@@ -25,16 +25,19 @@ def _propose(params):
     best = min(rows, key=lambda r: float(r[len(names) + 1]))
     point = {n: float(best[i + 1]) + 0.1 * ((lo + hi) / 2 - float(best[i + 1]))
              for i, (n, (lo, hi)) in enumerate(zip(names, bounds))}
-    return {"reasoning": f"Step from measurement #{best[0]} toward the centre.",
-            "next_point": point}
+    return (f"Step from measurement #{best[0]} toward the centre.",
+            {"next_point": point})
 
 
 class _Messages:
     def create(self, **params):
         calls.append(params)
-        text = json.dumps(_propose(params))
+        summary, answer = _propose(params)
         return SimpleNamespace(stop_reason="end_turn", stop_details=None,
-                               content=[SimpleNamespace(type="text", text=text)])
+                               content=[SimpleNamespace(type="thinking",
+                                                        thinking=summary),
+                                        SimpleNamespace(type="text",
+                                                        text=json.dumps(answer))])
 
 
 class Anthropic:

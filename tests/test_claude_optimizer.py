@@ -45,7 +45,7 @@ class FakeClient:
 
     def create(self, **params):
         self.requests.append(params)
-        reply = {"reasoning": "test", "next_point": self.points.pop(0)}
+        reply = {"next_point": self.points.pop(0)}
         from types import SimpleNamespace as NS
         return NS(stop_reason="end_turn", stop_details=None,
                   content=[NS(type="text", text=json.dumps(reply))])
@@ -69,6 +69,7 @@ def test_loop_callbacks_and_result(tmp_path):
     # Out-of-bounds proposal is clipped to the bounds.
     assert res.x_iters[-1] == pytest.approx([-1.0, 1.0])
     assert [json.loads(l)["iteration"] for l in open(log)] == [5, 6]
+    assert all("thinking_summary" in json.loads(l) for l in open(log))
 
     # Results save exactly like a skopt run.
     bo.save_results(res, str(tmp_path) + "/", "Oct-01-2026_results-t-000",
@@ -96,10 +97,14 @@ def test_request_contents():
     assert req["model"] == "claude-opus-5-5"
     assert req["fallbacks"] == "default"
     assert req["output_config"]["effort"] == "high"
+    assert req["thinking"] == {"type": "adaptive", "display": "summarized"}
     schema = req["output_config"]["format"]["schema"]
+    assert schema["required"] == ["next_point"]
     assert schema["properties"]["next_point"]["required"] == ["Vdd", "delay"]
     system = req["system"][0]["text"]
     assert "- Vdd: [-23, -10]" in system and "unsafe" in system
+    # Asking for reasoning in the answer gets declined as reasoning_extraction.
+    assert "reasoning" not in system.lower()
     user = req["messages"][0]["content"]
     assert "Measurements so far (2)" in user and "3.2" in user
     assert "Measurements left in this campaign, including the next one: 1" in user
@@ -137,7 +142,8 @@ def test_agents_end_to_end_with_claude(tmp_path):
         cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Starting CLAUDE optimization" in proc.stdout
-    assert proc.stdout.count("Claude: Step from measurement") == 2
+    assert proc.stdout.count("Claude proposes:") == 2
+    assert proc.stdout.count("(summary): Step from measurement") == 2
 
     (out,) = glob.glob(str(tmp_path / "images" / "skipper" / "ai" / "*"))
     assert len(pd.read_csv(os.path.join(out, "gp_results.csv"))) == 6

@@ -66,7 +66,10 @@ python optimize_agents.py --config config_skipper_claude.json
   the bounds.
 - `model` (default `claude-opus-5-5`), `effort` (`low` … `max`, default
   `high`) and free-text `notes` for Claude go in the `optimizer` block.
-- Claude's reasoning is printed and saved to `<run>_claude_decisions.jsonl`.
+- Each proposed point and a summary of Claude's thinking (returned by the
+  API) are printed and saved to `<run>_claude_decisions.jsonl`. The prompt
+  never asks Claude to write out its reasoning in the answer: Opus 5.5
+  declines that as `reasoning_extraction`.
 - Progress CSV, `gp_results.csv`, warm restart (`--resume`), the `.pkl`
   dump and the convergence plot work exactly as with `gp`, so GP and Claude
   campaigns can be compared directly or resumed from one another.

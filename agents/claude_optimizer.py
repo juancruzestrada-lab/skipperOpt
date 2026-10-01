@@ -26,8 +26,12 @@ Loop
    reasons about it, and returns the next point to measure as JSON.
 3. The point is clipped to the bounds, measured, and appended to the history.
 
-Every decision (Claude's reasoning + proposed point) is appended to
-<run>_claude_decisions.jsonl next to the progress CSV.
+Every decision (proposed point + a summary of Claude's thinking, as
+returned by the API) is appended to <run>_claude_decisions.jsonl next to
+the progress CSV. The prompt deliberately does not ask Claude to write its
+reasoning into the answer: Opus 5.5 declines such requests
+("reasoning_extraction"), so the explanation comes from the summarized
+thinking blocks instead.
 
 Needs `pip install anthropic` and an API key in ANTHROPIC_API_KEY (or an
 `ant auth login` profile).
@@ -76,7 +80,7 @@ Image statistics reported with each measurement (ADU):
 - charge_overscan / charge_active: medians of those regions
 - gain: charge_active - charge_overscan (LED signal; scales with amplifier gain)
 {notes}
-Reply with your reasoning (a few sentences) and the next point."""
+Reply with the next point to measure."""
 
 
 def _describe_parameters(param_cfgs: list) -> str:
@@ -109,7 +113,6 @@ def _output_schema(param_cfgs: list) -> dict:
     return {
         "type": "object",
         "properties": {
-            "reasoning":  {"type": "string"},
             "next_point": {
                 "type": "object",
                 "properties": {p["name"]: {"type": "number"} for p in param_cfgs},
@@ -117,7 +120,7 @@ def _output_schema(param_cfgs: list) -> dict:
                 "additionalProperties": False,
             },
         },
-        "required": ["reasoning", "next_point"],
+        "required": ["next_point"],
         "additionalProperties": False,
     }
 
@@ -147,6 +150,7 @@ def _ask_claude(client, model, effort, max_tokens, system, schema, user):
         fallbacks="default",
         system=[{"type": "text", "text": system,
                  "cache_control": {"type": "ephemeral"}}],
+        thinking={"type": "adaptive", "display": "summarized"},
         output_config={"effort": effort,
                        "format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": user}],
@@ -156,7 +160,12 @@ def _ask_claude(client, model, effort, max_tokens, system, schema, user):
     if response.stop_reason == "max_tokens":
         raise RuntimeError("Claude's reply was cut off; raise optimizer.max_tokens.")
     text = [b.text for b in response.content if b.type == "text"][-1]
-    return json.loads(text)
+    decision = json.loads(text)
+    decision["thinking_summary"] = "\n".join(
+        b.thinking for b in response.content
+        if b.type == "thinking" and getattr(b, "thinking", "")
+    )
+    return decision
 
 
 def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
@@ -231,7 +240,11 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
             v = float(np.clip(decision["next_point"][p["name"]], lo, hi))
             x_norm.append(float(np.clip(bo.to_normalized(v, lo, hi), -1.0, 1.0)))
 
-        print(f"Claude: {decision['reasoning']}")
+        point = ", ".join(f"{p['name']}={decision['next_point'][p['name']]}"
+                          for p in param_cfgs)
+        print(f"Claude proposes: {point}")
+        if decision["thinking_summary"]:
+            print(f"Claude's thinking (summary): {decision['thinking_summary']}")
         if decision_log:
             with open(decision_log, "a") as f:
                 f.write(json.dumps({
