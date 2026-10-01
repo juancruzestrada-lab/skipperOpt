@@ -16,9 +16,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "data")
 
 CAMPAIGNS = [   # run id, label, series colour (validated categorical slots 1-3)
-    ("002", "Campaign 1", "#2a78d6"),
-    ("003", "Campaign 2", "#eb6834"),
-    ("004", "Campaign 3: amplifier not working", "#1baf7a"),
+    ("002", "Campaign 1 (ext 2)", "#2a78d6"),
+    ("003", "Campaign 2 (ext 3)", "#eb6834"),
+    ("004", "Campaign 3 (ext 1): not working", "#1baf7a"),
 ]
 N_SOBOL = 8
 BROKEN_GAIN = 1000          # gain below this: no usable signal

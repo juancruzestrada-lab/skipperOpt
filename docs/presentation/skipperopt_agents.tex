@@ -33,10 +33,11 @@
         showstringspaces=false,breaklines=true}
 
 \newcommand{\fillin}[1]{\textcolor{warm}{\textbf{[#1]}}}
-% Amplifier (FITS extension) used in each campaign of Oct 1, 2026.  %% FILL IN
-\newcommand{\ampA}{\fillin{amp ?}}   % campaign 1 (run 002)
-\newcommand{\ampB}{\fillin{amp ?}}   % campaign 2 (run 003)
-\newcommand{\ampC}{\fillin{amp ?}}   % campaign 3 (run 004), not working
+% Amplifier (FITS extension) used in each campaign of Oct 1, 2026, identified
+% by recomputing F for each extension and matching the logged value.
+\newcommand{\ampA}{ext 2}   % campaign 1 (run 002)
+\newcommand{\ampB}{ext 3}   % campaign 2 (run 003)
+\newcommand{\ampC}{ext 1}   % campaign 3 (run 004), not working
 
 \tikzset{
   box/.style={draw=accent,thick,rounded corners=3pt,fill=soft,align=center,
@@ -342,7 +343,7 @@ Choose the next point.
     \item a \textbf{summary of Claude's thinking} (why this point)
     \item tokens used and the estimated cost
   \end{itemize}
-  {\scriptsize Real rows from campaign 2 (Oct 1, 2026), as sent to Claude; some rows omitted.}
+  {\scriptsize Real rows from campaign 2 (Oct 1, 2026, amplifier ext 3), as sent to Claude; some rows omitted.}
 \end{frame}
 
 % ===========================================================================
@@ -397,8 +398,9 @@ Choose the next point.
   \begin{itemize}
     \item Campaigns 1 and 2: working amplifiers, $F \approx 0.02$--$0.03$ in the good region;
           repeats at a fixed setting scatter by about $\pm 0.005$
-    \item \textbf{Campaign 3: amplifier not working.} Overscan noise $\sim$50$\times$ higher,
-          overscan level $\approx -4.8\times10^{5}$ ADU; $F$ never below 1.1
+    \item \textbf{Campaign 3: amplifier ext 1 not working.} Overscan noise $\sim$50$\times$ higher,
+          overscan level $\approx -4.8\times10^{5}$ ADU; $F$ never below 1.1. Ext 1 shows
+          $\sigma_{os} \approx 3\times10^{4}$ ADU in every image, also in the other campaigns' images
     \item Repeatable failures: the shallow corner $(-10.3, -12.5, -5.2)$ in all three
           campaigns; $V_{drain}$ less negative than $V_{dd}$ in campaigns 1 and 2
   \end{itemize}
