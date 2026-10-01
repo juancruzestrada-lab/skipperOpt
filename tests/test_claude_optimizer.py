@@ -151,6 +151,79 @@ def test_usage_and_cost(tmp_path, capsys):
     assert "Claude usage: 2 requests, 16000 input tokens (8000 from cache)" in out
 
 
+class NotebookClient(FakeClient):
+    """Scripted points for decisions; plain text for the notebook request."""
+
+    def create(self, **params):
+        if "format" not in params["output_config"]:
+            self.requests.append(params)
+            from types import SimpleNamespace as NS
+            return NS(stop_reason="end_turn", stop_details=None,
+                      content=[NS(type="text", text="- Best near Vdd -17 V.")])
+        return super().create(**params)
+
+
+def test_notebook_written_then_loaded(tmp_path):
+    nb = tmp_path / "claude_notebook.md"
+
+    client = NotebookClient([{"Vdd": -17, "delay": 18}])
+    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
+                    n_initial_points=1, random_state=1, client=client,
+                    notebook=str(nb), module="mod9")
+    assert len(client.requests) == 2              # 1 decision + 1 notebook entry
+    assert "Lab notebook from previous" not in client.requests[0]["system"][0]["text"]
+    notebook_req = client.requests[1]
+    assert "campaign is finished" in notebook_req["messages"][0]["content"]
+    # Same system prompt as the decisions, so it is read from the cache.
+    assert notebook_req["system"] == client.requests[0]["system"]
+    text = nb.read_text()
+    assert text.startswith("# Claude lab notebook")
+    assert "| module mod9 | 2 measurements (2 new) | best F = 0 at Vdd=-17.0, delay=18" in text
+    assert "- Best near Vdd -17 V." in text
+
+    # The next campaign starts with the notebook in its instructions.
+    client = NotebookClient([{"Vdd": -16, "delay": 18}])
+    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
+                    n_initial_points=1, random_state=2, client=client,
+                    notebook=str(nb), module="mod9")
+    system = client.requests[0]["system"][0]["text"]
+    assert "Lab notebook from previous campaigns" in system
+    assert "- Best near Vdd -17 V." in system
+    assert "trust the current measurements" in system
+    assert nb.read_text().count("\n## ") == 2
+
+
+def test_notebook_failure_does_not_break_campaign(tmp_path, capsys):
+    nb = tmp_path / "nb.md"
+    client = FakeClient([{"Vdd": -17, "delay": 18}], )
+    # Second request (the notebook entry) fails permanently.
+    client.errors = []
+    orig = client.create
+
+    def create(**params):
+        if "format" not in params["output_config"]:
+            raise APIError(400)
+        return orig(**params)
+
+    client.create = create
+    res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS,
+                          obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                          client=client, notebook=str(nb))
+    assert len(res.x_iters) == 2
+    assert not nb.exists()
+    assert "could not write the lab notebook entry" in capsys.readouterr().out
+
+
+def test_load_notebook_keeps_newest_entries(tmp_path):
+    nb = tmp_path / "nb.md"
+    nb.write_text("# Claude lab notebook\n" +
+                  "".join(f"\n## entry {i}\n\n" + "x" * 100 + "\n" for i in range(10)))
+    text = co.load_notebook(str(nb), max_chars=400)
+    assert text.startswith("[older entries omitted]")
+    assert "## entry 9" in text and "## entry 0" not in text
+    assert co.load_notebook(str(tmp_path / "missing.md")) == ""
+
+
 def test_cost_estimate_by_model():
     u = {"input_tokens": 1_000_000, "output_tokens": 0,
          "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
@@ -250,7 +323,8 @@ def test_agents_end_to_end_with_claude(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Starting CLAUDE optimization" in proc.stdout
     assert proc.stdout.count("Claude proposes:") == 2
-    assert "Claude usage: 2 requests" in proc.stdout
+    assert "Claude usage: 3 requests" in proc.stdout     # 2 points + notebook
+
     assert proc.stdout.count("(summary): Step from measurement") == 2
 
     (out,) = glob.glob(str(tmp_path / "images" / "skipper" / "ai" / "*"))
@@ -258,3 +332,12 @@ def test_agents_end_to_end_with_claude(tmp_path):
     (decisions,) = glob.glob(os.path.join(out, "*_claude_decisions.jsonl"))
     assert len(open(decisions).readlines()) == 2
     assert glob.glob(os.path.join(out, "*_claude_result.pkl"))
+
+    nb = tmp_path / "images" / "skipper" / "claude_notebook.md"
+    assert nb.exists() and nb.read_text().count("\n## ") == 1
+    assert "empty, will be created" in proc.stdout
+    # A second campaign loads it and adds its own entry.
+    proc = run_claude_campaign(tmp_path, 5)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Lab notebook: " in proc.stdout and "(loaded, " in proc.stdout
+    assert nb.read_text().count("\n## ") == 2

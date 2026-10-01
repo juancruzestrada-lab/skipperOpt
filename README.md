@@ -88,6 +88,29 @@ python optimize_agents.py --config config_skipper_claude.json
   about 15 minutes before the run stops. A bad key or bad request stops
   the run immediately.
 
+### Lab notebook: carrying lessons between campaigns
+
+Each API call starts from scratch, so on its own Claude remembers nothing
+from earlier campaigns. The lab notebook gives it that memory:
+
+- At the end of every Claude campaign, Claude writes a short entry: best
+  region, settings that gave broken images and how they showed in the
+  statistics, which parameters mattered, suggestions for the next run. The
+  code adds a header with the date, module, number of measurements and the
+  best point. Entries are appended to
+  `<output_base>/<module>/claude_notebook.md` (one notebook per module,
+  shared by all dates).
+- At the start of every Claude campaign the notebook is loaded into Claude's
+  instructions as prior knowledge, with the instruction to trust current
+  measurements over old entries when they disagree (temperature, cabling or
+  firmware may have changed). Only the newest ~30,000 characters are sent.
+- It is a plain Markdown file: read it, correct it, add your own notes,
+  delete entries that no longer apply.
+- Set `"notebook": "<path>"` in the `optimizer` block for another location
+  (e.g. one notebook per detector), or `"notebook": false` to turn it off.
+- If writing the entry fails, the campaign's results are saved anyway.
+  Interrupted campaigns write no entry.
+
 Code: `agents/claude_optimizer.py`. The acquisition and objective agents are
 unchanged.
 

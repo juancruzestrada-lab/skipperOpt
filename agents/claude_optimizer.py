@@ -14,7 +14,8 @@ work unchanged. Select it in the config with:
         "random_state": 15,
         "model": "claude-opus-5-5",
         "effort": "high",
-        "notes": "Anything Claude should know about this detector."
+        "notes": "Anything Claude should know about this detector.",
+        "notebook": "path/to/claude_notebook.md"     (optional)
     }
 
 Loop
@@ -33,11 +34,21 @@ reasoning into the answer: Opus 5.5 declines such requests
 ("reasoning_extraction"), so the explanation comes from the summarized
 thinking blocks instead.
 
+Lab notebook
+------------
+At the end of each campaign Claude writes a short entry (best region,
+broken settings, sensitivities, suggestions) to a Markdown notebook, by
+default <output_base>/<module>/claude_notebook.md. Every new campaign loads
+the notebook into Claude's instructions as prior knowledge, so each run
+starts from what earlier runs found. The file is plain text: read it, edit
+it, delete entries that no longer apply. "notebook": false turns it off.
+
 Needs `pip install anthropic` and an API key in ANTHROPIC_API_KEY (or an
 `ant auth login` profile).
 """
 
 import json
+import os
 import time
 from datetime import datetime
 
@@ -52,7 +63,11 @@ DEFAULT_MODEL  = "claude-opus-5-5"
 DEFAULT_EFFORT = "high"
 
 # Keys of config["optimizer"] used by claude_minimize (everything else ignored).
-_CLAUDE_KEYS = {"model", "effort", "notes", "max_tokens"}
+_CLAUDE_KEYS = {"model", "effort", "notes", "max_tokens", "notebook_max_chars"}
+
+# Older notebook entries are dropped from the prompt (not from the file)
+# beyond this many characters.
+DEFAULT_NOTEBOOK_MAX_CHARS = 30000
 
 
 SYSTEM_PROMPT = """\
@@ -80,8 +95,30 @@ Image statistics reported with each measurement (ADU):
 - noise_active: std of the exposed active region
 - charge_overscan / charge_active: medians of those regions
 - gain: charge_active - charge_overscan (LED signal; scales with amplifier gain)
-{notes}
+{notes}{notebook}
 Reply with the next point to measure."""
+
+NOTEBOOK_SECTION = """
+Lab notebook from previous campaigns on this setup (entries written at the \
+end of earlier campaigns, possibly edited by the operator; oldest first). \
+Use it as prior knowledge, not as ground truth: conditions such as \
+temperature, cabling or firmware may have changed since, so when the \
+current measurements disagree with it, trust the current measurements.
+
+{text}
+"""
+
+NOTEBOOK_REQUEST = """The campaign is finished. Write a lab-notebook entry for future campaigns \
+on this setup. Measurements of this campaign:
+{table}
+
+Cover, concisely (about 150-300 words, plain Markdown, no top-level heading):
+- the best region found, with parameter values and F, and how reproducible it looked
+- regions or settings that gave broken or useless images, and how that showed \
+in the statistics (e.g. negative gain, very large overscan noise)
+- which parameters F was most and least sensitive to
+- concrete suggestions for the next campaign (bounds, starting points, what to test)
+Record only what these measurements and earlier notebook entries support."""
 
 
 def _describe_parameters(param_cfgs: list) -> str:
@@ -205,7 +242,11 @@ def _fmt_cost(cost) -> str:
     return f"≈ ${cost:.3f}" if cost is not None else "cost unknown for this model"
 
 
-def _ask_claude(client, model, effort, max_tokens, system, schema, user):
+def _request(client, model, effort, max_tokens, system, user, schema=None):
+    """One Claude request. Returns (final text, thinking summary, accounting)."""
+    output_config = {"effort": effort}
+    if schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": schema}
     response = _create_with_retry(
         client,
         model=model,
@@ -215,8 +256,7 @@ def _ask_claude(client, model, effort, max_tokens, system, schema, user):
         system=[{"type": "text", "text": system,
                  "cache_control": {"type": "ephemeral"}}],
         thinking={"type": "adaptive", "display": "summarized"},
-        output_config={"effort": effort,
-                       "format": {"type": "json_schema", "schema": schema}},
+        output_config=output_config,
         messages=[{"role": "user", "content": user}],
     )
     if response.stop_reason == "refusal":
@@ -224,24 +264,62 @@ def _ask_claude(client, model, effort, max_tokens, system, schema, user):
     if response.stop_reason == "max_tokens":
         raise RuntimeError("Claude's reply was cut off; raise optimizer.max_tokens.")
     text = [b.text for b in response.content if b.type == "text"][-1]
-    decision = json.loads(text)
-    decision["thinking_summary"] = "\n".join(
+    thinking = "\n".join(
         b.thinking for b in response.content
         if b.type == "thinking" and getattr(b, "thinking", "")
     )
     # A refusal fallback can answer with another model; price what ran.
     served_by = getattr(response, "model", None)
-    decision["served_by"] = served_by if isinstance(served_by, str) else model
-    decision["usage"] = _usage_of(response)
-    decision["cost_usd"] = estimate_cost(decision["served_by"], decision["usage"])
+    served_by = served_by if isinstance(served_by, str) else model
+    usage = _usage_of(response)
+    return text, thinking, {"served_by": served_by, "usage": usage,
+                            "cost_usd": estimate_cost(served_by, usage)}
+
+
+def _ask_claude(client, model, effort, max_tokens, system, schema, user):
+    text, thinking, accounting = _request(client, model, effort, max_tokens,
+                                          system, user, schema)
+    decision = json.loads(text)
+    decision["thinking_summary"] = thinking
+    decision.update(accounting)
     return decision
+
+
+# ---------------------------------------------------------------------------
+# Lab notebook: lessons carried from one campaign to the next
+# ---------------------------------------------------------------------------
+
+def load_notebook(path: str, max_chars: int = DEFAULT_NOTEBOOK_MAX_CHARS) -> str:
+    """Notebook text for the prompt ('' if none). Keeps the newest entries."""
+    if not path or not os.path.exists(path):
+        return ""
+    with open(path) as f:
+        text = f.read().strip()
+    if len(text) > max_chars:
+        cut = text.find("\n## ", len(text) - max_chars)
+        text = ("[older entries omitted]\n" +
+                (text[cut + 1:] if cut != -1 else text[-max_chars:]))
+    return text
+
+
+def append_notebook_entry(path: str, header: str, body: str):
+    new_file = not os.path.exists(path)
+    with open(path, "a") as f:
+        if new_file:
+            f.write("# Claude lab notebook\n\n"
+                    "Written by the Claude optimizer at the end of each "
+                    "campaign and read at the start of the next one. Edit or "
+                    "delete entries freely.\n")
+        f.write(f"\n## {header}\n\n{body.strip()}\n")
 
 
 def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                     n_initial_points=8, random_state=None, callback=None,
                     x0=None, y0=None, observations=None,
                     model=DEFAULT_MODEL, effort=DEFAULT_EFFORT, notes="",
-                    max_tokens=16000, decision_log=None, client=None):
+                    max_tokens=16000, decision_log=None, client=None,
+                    notebook=None, notebook_max_chars=DEFAULT_NOTEBOOK_MAX_CHARS,
+                    module=""):
     """
     Minimize func over dimensions with Claude choosing the points.
 
@@ -250,6 +328,10 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
     observations : list that the caller appends one stats dict to per
                    evaluation (optional; shown to Claude when present)
     client       : anthropic.Anthropic instance (created if None)
+    notebook     : path of the lab notebook (Markdown). Read into the prompt
+                   at the start; a new entry is appended at the end.
+                   None disables it.
+    module       : detector/module name, used in notebook entry headers
     """
     if client is None:
         import anthropic
@@ -263,10 +345,16 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
     yi = [float(y) for y in y0] if y0 else []
     n_prior = len(Xi)
 
+    notebook_text = load_notebook(notebook, notebook_max_chars)
+    if notebook:
+        print(f"Lab notebook: {notebook} "
+              f"({'loaded, ' + str(len(notebook_text)) + ' characters' if notebook_text else 'empty, will be created'})")
     system = SYSTEM_PROMPT.format(
         parameters=_describe_parameters(param_cfgs),
         objective=_describe_objective(obj_cfg),
         notes=f"\nNotes from the operator:\n{notes}\n" if notes else "",
+        notebook=(NOTEBOOK_SECTION.format(text=notebook_text)
+                  if notebook_text else ""),
     )
     schema = _output_schema(param_cfgs)
     specs  = {"function": "claude_minimize",
@@ -337,6 +425,31 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                 }) + "\n")
         result = record(x_norm)
 
+    if notebook and Xi:
+        try:
+            body, _, accounting = _request(
+                client, model, effort, max_tokens, system,
+                NOTEBOOK_REQUEST.format(
+                    table=_history_table(Xi, yi, stats, param_cfgs, n_prior)))
+            n_requests += 1
+            for k in _USAGE_FIELDS:
+                total_usage[k] += accounting["usage"][k]
+            if total_cost is not None:
+                total_cost = (None if accounting["cost_usd"] is None
+                              else total_cost + accounting["cost_usd"])
+            best = int(np.argmin(yi))
+            best_point = ", ".join(
+                f"{p['name']}={round(bo.from_normalized(v, *p['bounds']), p.get('precision', 2))}"
+                for v, p in zip(Xi[best], param_cfgs))
+            header = (f"{datetime.now():%Y-%m-%d %H:%M} | module {module or '?'} | "
+                      f"{len(Xi)} measurements ({len(Xi) - n_prior} new) | "
+                      f"best F = {yi[best]:.5g} at {best_point}")
+            append_notebook_entry(notebook, header, body)
+            print(f"\nLab notebook entry added to {notebook}:\n{body.strip()}")
+        except Exception as err:
+            print(f"\nWARNING: could not write the lab notebook entry ({err}); "
+                  "the campaign results are unaffected.")
+
     if n_requests:
         total_in = (total_usage["input_tokens"]
                     + total_usage["cache_creation_input_tokens"]
@@ -355,8 +468,14 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
 
 def build_claude_call(opt_cfg: dict, space: list, objective_fn, callback,
                       param_cfgs: list, obj_cfg: dict, observations: list,
-                      decision_log: str, x0=None, y0=None):
-    """Same contract as bo_core.build_optimizer_call, for type 'claude'."""
+                      decision_log: str, x0=None, y0=None,
+                      default_notebook: str = None, module: str = ""):
+    """
+    Same contract as bo_core.build_optimizer_call, for type 'claude'.
+
+    optimizer["notebook"] sets the lab notebook path; false/null turns the
+    notebook off; if absent, default_notebook is used.
+    """
     kwargs = {
         "func":             objective_fn,
         "dimensions":       space,
@@ -370,6 +489,8 @@ def build_claude_call(opt_cfg: dict, space: list, objective_fn, callback,
         "decision_log":     decision_log,
         "x0":               x0,
         "y0":               y0,
+        "notebook":         opt_cfg.get("notebook", default_notebook) or None,
+        "module":           module,
     }
     for key in _CLAUDE_KEYS:
         if key in opt_cfg:

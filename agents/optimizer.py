@@ -176,6 +176,10 @@ class OptimizerAgent:
                     self.param_cfgs, self.cfg["objective"], self.observations,
                     output_directory + file_name[:-4] + "_claude_decisions.jsonl",
                     x0=x0, y0=y0,
+                    default_notebook=os.path.join(self.img_cfg["output_base"],
+                                                  self.module,
+                                                  "claude_notebook.md"),
+                    module=self.module,
                 )
             else:
                 minimize_fn, opt_kwargs = bo.build_optimizer_call(
