@@ -53,7 +53,9 @@ Claude chooses the points instead of the Gaussian process:
 
 ```bash
 pip install anthropic
-export ANTHROPIC_API_KEY=...
+# Replace the text in quotes with your own key from
+# https://platform.claude.com (API Keys). It starts with sk-ant-
+export ANTHROPIC_API_KEY='sk-ant-REPLACE-WITH-YOUR-KEY'
 python optimize_agents.py --config config_skipper_claude.json
 ```
 
