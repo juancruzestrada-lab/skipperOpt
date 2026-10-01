@@ -19,6 +19,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [REPO, os.path.join(REPO, "tests", "fake_hw")]
 
 import bo_core as bo                                   # noqa: E402
+import agents.claude_optimizer as co                    # noqa: E402
 from agents.claude_optimizer import claude_minimize    # noqa: E402
 
 PARAMS = [
@@ -35,16 +36,25 @@ def quadratic(x):
     return (vdd + 17) ** 2 + 0.1 * (delay - 18) ** 2
 
 
-class FakeClient:
-    """Returns scripted replies and records the requests."""
+class APIError(Exception):
+    def __init__(self, status_code):
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
 
-    def __init__(self, points):
+
+class FakeClient:
+    """Returns scripted replies (or raises scripted errors) and records requests."""
+
+    def __init__(self, points, errors=()):
         self.points, self.requests = list(points), []
+        self.errors = list(errors)
         self.beta = self
         self.messages = self
 
     def create(self, **params):
         self.requests.append(params)
+        if self.errors:
+            raise self.errors.pop(0)
         reply = {"next_point": self.points.pop(0)}
         from types import SimpleNamespace as NS
         return NS(stop_reason="end_turn", stop_details=None,
@@ -110,6 +120,41 @@ def test_request_contents():
     assert "Measurements left in this campaign, including the next one: 1" in user
 
 
+def test_temporary_api_errors_are_retried(monkeypatch):
+    waits = []
+    monkeypatch.setattr(co, "_sleep", waits.append)
+    client = FakeClient([{"Vdd": -17, "delay": 18}],
+                        errors=[APIError(529), APIError(500)])
+    res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS,
+                          obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                          client=client)
+    assert waits == [15, 30]
+    assert len(client.requests) == 3
+    assert len(res.x_iters) == 2
+
+
+def test_permanent_api_errors_are_not_retried(monkeypatch):
+    waits = []
+    monkeypatch.setattr(co, "_sleep", waits.append)
+    client = FakeClient([], errors=[APIError(401)])
+    with pytest.raises(APIError):
+        claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS,
+                        obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                        client=client)
+    assert waits == []
+
+
+def test_retries_give_up_eventually(monkeypatch):
+    waits = []
+    monkeypatch.setattr(co, "_sleep", waits.append)
+    client = FakeClient([], errors=[APIError(529)] * 20)
+    with pytest.raises(APIError):
+        claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS,
+                        obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                        client=client)
+    assert waits == co._RETRY_WAITS
+
+
 def test_warm_start_skips_initial_design():
     client = FakeClient([{"Vdd": -17, "delay": 18}, {"Vdd": -16, "delay": 18}])
     x0 = [[0.0, 0.0], [0.5, -0.5]]
@@ -121,14 +166,14 @@ def test_warm_start_skips_initial_design():
     assert "Measurements so far (2)" in client.requests[0]["messages"][0]["content"]
 
 
-def test_agents_end_to_end_with_claude(tmp_path):
+def run_claude_campaign(tmp_path, n_calls, extra_env=None, resume=None):
     with open(os.path.join(REPO, "config_skipper.json")) as f:
         cfg = json.load(f)
     fake_hw = os.path.join(REPO, "tests", "fake_hw")
     cfg["lta"]["script"]        = os.path.join(fake_hw, "fake_lta.py")
     cfg["exposure_time"]        = 0
     cfg["image"]["output_base"] = str(tmp_path / "images")
-    cfg["optimizer"] = {"type": "claude", "n_calls": 6,
+    cfg["optimizer"] = {"type": "claude", "n_calls": n_calls,
                         "n_initial_points": 4, "random_state": 15}
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps(cfg))
@@ -136,10 +181,32 @@ def test_agents_end_to_end_with_claude(tmp_path):
     env = dict(os.environ, MPLBACKEND="Agg",
                FAKE_LTA_STATE=str(tmp_path / "state.json"),
                PYTHONPATH=os.pathsep.join(
-                   [os.path.join(REPO, "tests", "fake_claude"), fake_hw, REPO]))
-    proc = subprocess.run(
-        [sys.executable, "optimize_agents.py", "--config", str(cfg_path)],
-        cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+                   [os.path.join(REPO, "tests", "fake_claude"), fake_hw, REPO]),
+               **(extra_env or {}))
+    cmd = [sys.executable, "optimize_agents.py", "--config", str(cfg_path)]
+    if resume:
+        cmd += ["--resume", resume]
+    return subprocess.run(cmd, cwd=REPO, env=env, capture_output=True,
+                          text=True, timeout=300)
+
+
+def test_interrupted_claude_run_can_be_resumed(tmp_path):
+    # Claude fails permanently on its 3rd request: 4 Sobol + 2 guided points done.
+    proc = run_claude_campaign(tmp_path, 8, {"FAKE_CLAUDE_FAIL_AFTER": "2"})
+    assert proc.returncode != 0
+    assert "fake permanent API failure" in proc.stderr
+    (out,) = glob.glob(str(tmp_path / "images" / "skipper" / "ai" / "*"))
+    saved = os.path.join(out, "gp_results.csv")
+    assert len(pd.read_csv(saved)) == 6
+
+    proc = run_claude_campaign(tmp_path, 2, resume=saved)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Loaded 6 prior evaluations" in proc.stdout
+    assert len(pd.read_csv(saved)) == 8
+
+
+def test_agents_end_to_end_with_claude(tmp_path):
+    proc = run_claude_campaign(tmp_path, 6)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Starting CLAUDE optimization" in proc.stdout
     assert proc.stdout.count("Claude proposes:") == 2

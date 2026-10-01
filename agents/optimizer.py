@@ -71,6 +71,18 @@ class OptimizerAgent:
         self.observations.append(scored["stats"])
         return scored["F"]
 
+    def save_resume_csv(self, result, output_directory: str):
+        """
+        Write gp_results.csv (same format as bo.save_results) after every
+        iteration, so an interrupted run can be continued with --resume.
+        """
+        df = pd.DataFrame(result.x_iters,
+                          columns=[f"param_{i}" for i in range(len(self.param_cfgs))])
+        df["objective"] = result.func_vals
+        path = output_directory + "gp_results.csv"
+        df.to_csv(path + ".tmp", index=False)
+        os.replace(path + ".tmp", path)
+
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
@@ -149,10 +161,14 @@ class OptimizerAgent:
             # ----------------------------------------------------------
             # Run optimization
             # ----------------------------------------------------------
-            callback = bo.make_progress_callback(
+            progress = bo.make_progress_callback(
                 writer, file_handle, self.param_cfgs, output_directory,
                 find_latest_fn=img.find_latest_fz_file,
             )
+
+            def callback(result):
+                progress(result)
+                self.save_resume_csv(result, output_directory)
             if self.opt_cfg["type"] == "claude":
                 from .claude_optimizer import build_claude_call
                 minimize_fn, opt_kwargs = build_claude_call(

@@ -46,6 +46,10 @@ which is handy for debugging (turn off with `--no-message-log`).
 If an agent raises an error, the run stops with that agent's traceback and
 the other agent processes are shut down.
 
+`gp_results.csv` is rewritten after every iteration (not only at the end),
+so a run that stops early for any reason can be continued with
+`--resume <output dir>/gp_results.csv`.
+
 ## Claude as the optimizer
 
 Set the optimizer type to `"claude"` (see `config_skipper_claude.json`) and
@@ -74,6 +78,10 @@ python optimize_agents.py --config config_skipper_claude.json
   dump and the convergence plot work exactly as with `gp`, so GP and Claude
   campaigns can be compared directly or resumed from one another.
 - Cost is one API call per guided iteration (22 calls for the example).
+- If the API is temporarily unavailable (overloaded, rate limited, server
+  or network error), the request is retried with growing waits for up to
+  about 15 minutes before the run stops. A bad key or bad request stops
+  the run immediately.
 
 Code: `agents/claude_optimizer.py`. The acquisition and objective agents are
 unchanged.

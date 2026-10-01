@@ -38,6 +38,7 @@ Needs `pip install anthropic` and an API key in ANTHROPIC_API_KEY (or an
 """
 
 import json
+import time
 from datetime import datetime
 
 import numpy as np
@@ -142,8 +143,36 @@ def _history_table(Xi, yi, stats, param_cfgs, n_prior) -> str:
     return "\n".join(rows)
 
 
+# Temporary API errors (rate limit, server error, overloaded) and network
+# problems are retried with growing waits, up to about 15 minutes in total,
+# so a busy API does not end a campaign. Other errors (bad key, bad request)
+# are raised immediately.
+_RETRY_STATUS = {408, 409, 429, 500, 502, 503, 504, 529}
+_RETRY_WAITS  = [15, 30, 60, 120, 180, 240, 300]   # seconds
+_sleep        = time.sleep
+
+
+def _is_temporary(err: Exception) -> bool:
+    if getattr(err, "status_code", None) in _RETRY_STATUS:
+        return True
+    return type(err).__name__ in ("APIConnectionError", "APITimeoutError")
+
+
+def _create_with_retry(client, **params):
+    for wait in _RETRY_WAITS + [None]:
+        try:
+            return client.beta.messages.create(**params)
+        except Exception as err:
+            if wait is None or not _is_temporary(err):
+                raise
+            print(f"  Claude API temporarily unavailable ({type(err).__name__}); "
+                  f"retrying in {wait} s...")
+            _sleep(wait)
+
+
 def _ask_claude(client, model, effort, max_tokens, system, schema, user):
-    response = client.beta.messages.create(
+    response = _create_with_retry(
+        client,
         model=model,
         max_tokens=max_tokens,
         betas=["server-side-fallback-2026-07-01"],
