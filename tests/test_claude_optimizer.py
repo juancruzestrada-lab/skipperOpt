@@ -163,62 +163,35 @@ class NotebookClient(FakeClient):
         return super().create(**params)
 
 
-def test_notebook_written_then_loaded(tmp_path):
-    nb = tmp_path / "claude_notebook.md"
-
+def test_lessons_and_notebook_in_prompt():
     client = NotebookClient([{"Vdd": -17, "delay": 18}])
-    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
-                    n_initial_points=1, random_state=1, client=client,
-                    notebook=str(nb), module="mod9")
-    assert len(client.requests) == 2              # 1 decision + 1 notebook entry
-    assert "Lab notebook from previous" not in client.requests[0]["system"][0]["text"]
+    res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
+                          n_initial_points=1, random_state=1, client=client,
+                          notebook_text="## old entry\n\n- Earlier lesson.",
+                          lessons=True, module="mod9", amplifier=4)
+    assert len(client.requests) == 2              # 1 decision + 1 notebook analysis
+    system = client.requests[0]["system"][0]["text"]
+    assert "Current setup: module mod9, amp 3 (HDU 4)." in system
+    assert "Lab notebook from previous campaigns" in system
+    assert "- Earlier lesson." in system and "trust the current measurements" in system
     notebook_req = client.requests[1]
     assert "campaign is finished" in notebook_req["messages"][0]["content"]
     # Same system prompt as the decisions, so it is read from the cache.
     assert notebook_req["system"] == client.requests[0]["system"]
-    text = nb.read_text()
-    assert text.startswith("# Claude lab notebook")
-    assert "| module mod9 | 2 measurements (2 new) | best F = 0 at Vdd=-17.0, delay=18" in text
-    assert "- Best near Vdd -17 V." in text
-
-    # The next campaign starts with the notebook in its instructions.
-    client = NotebookClient([{"Vdd": -16, "delay": 18}])
-    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
-                    n_initial_points=1, random_state=2, client=client,
-                    notebook=str(nb), module="mod9")
-    system = client.requests[0]["system"][0]["text"]
-    assert "Lab notebook from previous campaigns" in system
-    assert "- Best near Vdd -17 V." in system
-    assert "trust the current measurements" in system
-    assert nb.read_text().count("\n## ") == 2
+    assert res.specs["lessons"] == "- Best near Vdd -17 V."
 
 
-def test_notebook_records_amplifier_and_strips_heading(tmp_path):
-    nb = tmp_path / "nb.md"
-
-    class HeadingClient(NotebookClient):
-        def create(self, **params):
-            r = super().create(**params)
-            if "format" not in params["output_config"]:
-                r.content[0].text = "## My own heading\n\n- Lesson."
-            return r
-
-    client = HeadingClient([{"Vdd": -17, "delay": 18}])
-    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
-                    n_initial_points=1, random_state=1, client=client,
-                    notebook=str(nb), module="mod9", amplifier=4)
-    assert "Current setup: module mod9, amp 3 (HDU 4)." in client.requests[0]["system"][0]["text"]
-    text = nb.read_text()
-    assert "| module mod9 | amp 3 (HDU 4) | 2 measurements" in text
-    assert "My own heading" not in text and "- Lesson." in text
-    assert text.count("\n## ") == 1
+def test_no_notebook_and_no_lessons():
+    client = FakeClient([{"Vdd": -17, "delay": 18}])
+    res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
+                          n_initial_points=1, random_state=1, client=client)
+    assert len(client.requests) == 1
+    assert "Lab notebook" not in client.requests[0]["system"][0]["text"]
+    assert "lessons" not in res.specs
 
 
-def test_notebook_failure_does_not_break_campaign(tmp_path, capsys):
-    nb = tmp_path / "nb.md"
-    client = FakeClient([{"Vdd": -17, "delay": 18}], )
-    # Second request (the notebook entry) fails permanently.
-    client.errors = []
+def test_failed_lessons_do_not_break_campaign(capsys):
+    client = FakeClient([{"Vdd": -17, "delay": 18}])
     orig = client.create
 
     def create(**params):
@@ -229,20 +202,9 @@ def test_notebook_failure_does_not_break_campaign(tmp_path, capsys):
     client.create = create
     res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS,
                           obj_cfg=OBJ, n_initial_points=1, random_state=1,
-                          client=client, notebook=str(nb))
-    assert len(res.x_iters) == 2
-    assert not nb.exists()
-    assert "could not write the lab notebook entry" in capsys.readouterr().out
-
-
-def test_load_notebook_keeps_newest_entries(tmp_path):
-    nb = tmp_path / "nb.md"
-    nb.write_text("# Claude lab notebook\n" +
-                  "".join(f"\n## entry {i}\n\n" + "x" * 100 + "\n" for i in range(10)))
-    text = co.load_notebook(str(nb), max_chars=400)
-    assert text.startswith("[older entries omitted]")
-    assert "## entry 9" in text and "## entry 0" not in text
-    assert co.load_notebook(str(tmp_path / "missing.md")) == ""
+                          client=client, lessons=True)
+    assert len(res.x_iters) == 2 and "lessons" not in res.specs
+    assert "could not write its notebook analysis" in capsys.readouterr().out
 
 
 def test_cost_estimate_by_model():
@@ -300,7 +262,8 @@ def test_warm_start_skips_initial_design():
     assert "Measurements so far (2)" in client.requests[0]["messages"][0]["content"]
 
 
-def run_claude_campaign(tmp_path, n_calls, extra_env=None, resume=None):
+def run_claude_campaign(tmp_path, n_calls, extra_env=None, resume=None,
+                        optimizer=None):
     with open(os.path.join(REPO, "config_skipper.json")) as f:
         cfg = json.load(f)
     fake_hw = os.path.join(REPO, "tests", "fake_hw")
@@ -308,7 +271,8 @@ def run_claude_campaign(tmp_path, n_calls, extra_env=None, resume=None):
     cfg["exposure_time"]        = 0
     cfg["image"]["output_base"] = str(tmp_path / "images")
     cfg["optimizer"] = {"type": "claude", "n_calls": n_calls,
-                        "n_initial_points": 4, "random_state": 15}
+                        "n_initial_points": 4, "random_state": 15,
+                        **(optimizer or {})}
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps(cfg))
 
@@ -338,6 +302,15 @@ def test_interrupted_claude_run_can_be_resumed(tmp_path):
     assert "Loaded 6 prior evaluations" in proc.stdout
     assert len(pd.read_csv(saved)) == 8
 
+    # Both runs have a notebook entry; the first is marked as interrupted.
+    entries = notebook_entries(tmp_path)
+    assert len(entries) == 2
+    assert "| claude | 6 measurements (6 new) |" in entries[0][0]
+    assert "interrupted (RuntimeError)" in entries[0][0]
+    assert "**Run facts**" in entries[0][1]
+    assert "| 8 measurements (2 new) |" in entries[1][0]
+    assert "resumed from 6 earlier measurements" in entries[1][1]
+
 
 def test_agents_end_to_end_with_claude(tmp_path):
     proc = run_claude_campaign(tmp_path, 6)
@@ -354,11 +327,42 @@ def test_agents_end_to_end_with_claude(tmp_path):
     assert len(open(decisions).readlines()) == 2
     assert glob.glob(os.path.join(out, "*_claude_result.pkl"))
 
-    nb = tmp_path / "images" / "skipper" / "claude_notebook.md"
-    assert nb.exists() and nb.read_text().count("\n## ") == 1
-    assert "empty, will be created" in proc.stdout
+    (entry,) = notebook_entries(tmp_path)
+    header, body = entry
+    assert "| module skipper | amp 0 (HDU 1) | claude | 6 measurements (6 new) |" in header
+    assert body.startswith("**Run facts** (recorded by the code)")
+    assert "config: config.json" in body and "images optimize_" in body
+    assert "Signal (gain, ADU): median" in body and "Overscan noise (ADU)" in body
+    assert body.rstrip().endswith("}}")      # the fake Claude's analysis text comes last
+    assert "(empty)" in proc.stdout
     # A second campaign loads it and adds its own entry.
     proc = run_claude_campaign(tmp_path, 5)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Lab notebook: " in proc.stdout and "(loaded, " in proc.stdout
-    assert nb.read_text().count("\n## ") == 2
+    assert len(notebook_entries(tmp_path)) == 2
+
+
+def notebook_entries(tmp_path):
+    sys.path.insert(0, REPO)
+    import logbook
+    return logbook.read_entries(str(tmp_path / "images" / "skipper" / "claude_notebook.md"))
+
+
+def test_gp_and_write_only_runs_add_entries(tmp_path):
+    proc = run_claude_campaign(tmp_path, 5, optimizer={"type": "gp", "n_initial_points": 4})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "not read by this optimizer" in proc.stdout
+    (header, body), = notebook_entries(tmp_path)
+    assert "| gp | 5 measurements (5 new) |" in header
+    assert "**Run facts**" in body and "Optimizer: gp" in body
+
+    proc = run_claude_campaign(tmp_path, 5, optimizer={"notebook_read": False})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "not read for this run" in proc.stdout
+    entries = notebook_entries(tmp_path)
+    assert len(entries) == 2 and "| claude |" in entries[1][0]
+
+    proc = run_claude_campaign(tmp_path, 5, optimizer={"notebook": False})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Lab notebook" not in proc.stdout
+    assert len(notebook_entries(tmp_path)) == 2

@@ -53,6 +53,7 @@ def main():
         amplifier=args.amplifier,
         resume=args.resume,
         log_messages=not args.no_message_log,
+        config_name=args.config,
     ).run()
 
 

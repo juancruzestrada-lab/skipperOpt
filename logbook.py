@@ -2,8 +2,8 @@
 logbook.py
 Read the lab notebook (logbook) and add your own entries.
 
-The notebook is the Markdown file the Claude optimizer reads at the start of
-every campaign and adds to at the end of one. Entries you add here are
+The notebook is the Markdown file every optimize_agents.py run adds an entry
+to (GP or Claude), and that Claude reads at the start of each campaign. Entries you add here are
 marked "operator note" so Claude treats them as first-hand observations.
 
 Usage
@@ -34,8 +34,8 @@ import tempfile
 from datetime import datetime
 
 PREAMBLE = ("# Claude lab notebook\n\n"
-            "Written by the Claude optimizer at the end of each campaign and "
-            "read at the start of the next one. Edit or delete entries freely.\n")
+            "Written by the optimizer at the end of each campaign and read by "
+            "Claude at the start of the next one. Edit or delete entries freely.\n")
 
 DEFAULT_CONFIGS = ("config_skipper_claude.json", "config_skipper.json")
 

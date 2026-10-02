@@ -89,7 +89,7 @@
     "model": "claude-opus-5-5",
     "effort": "high",
     "notes": "Optional free text for Claude: detector quirks, safe ranges, what worked before.",
-    "_notebook": "Lab notebook (default <output_base>/<module>/claude_notebook.md): Claude adds an entry at the end of each campaign and reads the notebook at the start of the next. Rename this key to \"notebook\" to choose another path, or set \"notebook\": false to turn it off."
+    "_notebook": "Lab notebook (default <output_base>/<module>/claude_notebook.md): every run adds an entry; Claude reads it at the start. Rename to \"notebook\" for another path or set it to false to turn it off; \"notebook_read\": false keeps writing but does not show it to Claude."
   },
   "parameters": [
     {

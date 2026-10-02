@@ -91,25 +91,27 @@ python3 optimize_agents.py --config config_skipper_claude.json
 ### Lab notebook: carrying lessons between campaigns
 
 Each API call starts from scratch, so on its own Claude remembers nothing
-from earlier campaigns. The lab notebook gives it that memory:
+from earlier campaigns. The lab notebook gives it that memory, and gives you
+a record of every run:
 
-- At the end of every Claude campaign, Claude writes a short entry: best
-  region, settings that gave broken images and how they showed in the
-  statistics, which parameters mattered, suggestions for the next run. The
-  code adds a header with the date, module, number of measurements and the
-  best point. Entries are appended to
-  `<output_base>/<module>/claude_notebook.md` (one notebook per module,
-  shared by all dates).
-- At the start of every Claude campaign the notebook is loaded into Claude's
-  instructions as prior knowledge, with the instruction to trust current
-  measurements over old entries when they disagree (temperature, cabling or
-  firmware may have changed). Only the newest ~30,000 characters are sent.
-- It is a plain Markdown file: read it, correct it, add your own notes,
-  delete entries that no longer apply.
-- Set `"notebook": "<path>"` in the `optimizer` block for another location
-  (e.g. one notebook per detector), or `"notebook": false` to turn it off.
-- If writing the entry fails, the campaign's results are saved anyway.
-  Interrupted campaigns write no entry.
+- **Every run adds an entry**, GP or Claude, also when it is interrupted
+  (marked `interrupted (...)`). The header gives date, module, amplifier,
+  optimizer, number of measurements and the best point; the body starts with
+  **run facts** recorded by the code: config, images, times, best three
+  points, signal (gain) and overscan-noise statistics, and how many images had
+  no usable signal (gain < 1000 ADU).
+- **Claude runs** add Claude's analysis below the facts: best region, settings
+  that gave broken images, which parameters mattered, suggestions.
+- **Claude reads the notebook** at the start of each campaign as prior
+  knowledge, with the instruction to trust current measurements over old
+  entries, and is told which amplifier is in use. Only the newest ~30,000
+  characters are sent.
+- File: `<output_base>/<module>/claude_notebook.md` (one per module). Options
+  in the `optimizer` block: `"notebook": "<path>"` for another file,
+  `"notebook": false` to turn it off, `"notebook_read": false` to keep writing
+  entries but not show the notebook to Claude (used by
+  `config_compare_claude.json` for a fair comparison).
+- It is a plain Markdown file: read it, correct it, add your own notes.
 
 Reading and adding entries from the command line (`logbook.py`):
 
