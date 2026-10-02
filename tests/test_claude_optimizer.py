@@ -193,6 +193,27 @@ def test_notebook_written_then_loaded(tmp_path):
     assert nb.read_text().count("\n## ") == 2
 
 
+def test_notebook_records_amplifier_and_strips_heading(tmp_path):
+    nb = tmp_path / "nb.md"
+
+    class HeadingClient(NotebookClient):
+        def create(self, **params):
+            r = super().create(**params)
+            if "format" not in params["output_config"]:
+                r.content[0].text = "## My own heading\n\n- Lesson."
+            return r
+
+    client = HeadingClient([{"Vdd": -17, "delay": 18}])
+    claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=PARAMS, obj_cfg=OBJ,
+                    n_initial_points=1, random_state=1, client=client,
+                    notebook=str(nb), module="mod9", amplifier=4)
+    assert "Current setup: module mod9, amp 3 (HDU 4)." in client.requests[0]["system"][0]["text"]
+    text = nb.read_text()
+    assert "| module mod9 | amp 3 (HDU 4) | 2 measurements" in text
+    assert "My own heading" not in text and "- Lesson." in text
+    assert text.count("\n## ") == 1
+
+
 def test_notebook_failure_does_not_break_campaign(tmp_path, capsys):
     nb = tmp_path / "nb.md"
     client = FakeClient([{"Vdd": -17, "delay": 18}], )

@@ -76,7 +76,7 @@ read out by an LTA controller. Each measurement: the CCD is exposed to an \
 LED for a fixed time, the operating parameters below are set, an image is \
 read out, and a scalar objective F is computed from it. Lower F is better. \
 Each measurement takes real lab time, so choose every point deliberately.
-
+{setup}
 Your job each turn: look at all measurements so far and choose the single \
 next parameter set to measure, trading off exploiting the best region \
 against exploring regions you know little about. F is noisy; differences \
@@ -103,7 +103,11 @@ Lab notebook from previous campaigns on this setup (entries written at the \
 end of earlier campaigns, possibly edited by the operator; oldest first). \
 Use it as prior knowledge, not as ground truth: conditions such as \
 temperature, cabling or firmware may have changed since, so when the \
-current measurements disagree with it, trust the current measurements.
+current measurements disagree with it, trust the current measurements. \
+Each entry header names the module and, when recorded, the amplifier: an \
+entry for a different amplifier describes a different readout channel. \
+Entries marked "operator note" were written by the lab operator and are \
+first-hand observations.
 
 {text}
 """
@@ -303,6 +307,11 @@ def load_notebook(path: str, max_chars: int = DEFAULT_NOTEBOOK_MAX_CHARS) -> str
 
 
 def append_notebook_entry(path: str, header: str, body: str):
+    # The code writes the "## " header; drop any heading the body starts with.
+    lines = body.strip().splitlines()
+    while lines and lines[0].lstrip().startswith("#"):
+        lines.pop(0)
+    body = "\n".join(lines)
     new_file = not os.path.exists(path)
     with open(path, "a") as f:
         if new_file:
@@ -319,7 +328,7 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                     model=DEFAULT_MODEL, effort=DEFAULT_EFFORT, notes="",
                     max_tokens=16000, decision_log=None, client=None,
                     notebook=None, notebook_max_chars=DEFAULT_NOTEBOOK_MAX_CHARS,
-                    module=""):
+                    module="", amplifier=None):
     """
     Minimize func over dimensions with Claude choosing the points.
 
@@ -332,6 +341,8 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                    at the start; a new entry is appended at the end.
                    None disables it.
     module       : detector/module name, used in notebook entry headers
+    amplifier    : config "amplifier" value (FITS HDU index); recorded as
+                   amplifier number HDU-1 in the prompt and notebook headers
     """
     if client is None:
         import anthropic
@@ -349,7 +360,12 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
     if notebook:
         print(f"Lab notebook: {notebook} "
               f"({'loaded, ' + str(len(notebook_text)) + ' characters' if notebook_text else 'empty, will be created'})")
+    amp_label = (f"amp {amplifier - 1} (HDU {amplifier})"
+                 if amplifier is not None else None)
+    setup = (f"\nCurrent setup: module {module or '?'}, {amp_label}.\n"
+             if amp_label else "")
     system = SYSTEM_PROMPT.format(
+        setup=setup,
         parameters=_describe_parameters(param_cfgs),
         objective=_describe_objective(obj_cfg),
         notes=f"\nNotes from the operator:\n{notes}\n" if notes else "",
@@ -442,6 +458,7 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
                 f"{p['name']}={round(bo.from_normalized(v, *p['bounds']), p.get('precision', 2))}"
                 for v, p in zip(Xi[best], param_cfgs))
             header = (f"{datetime.now():%Y-%m-%d %H:%M} | module {module or '?'} | "
+                      + (f"{amp_label} | " if amp_label else "") +
                       f"{len(Xi)} measurements ({len(Xi) - n_prior} new) | "
                       f"best F = {yi[best]:.5g} at {best_point}")
             append_notebook_entry(notebook, header, body)
@@ -469,7 +486,8 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
 def build_claude_call(opt_cfg: dict, space: list, objective_fn, callback,
                       param_cfgs: list, obj_cfg: dict, observations: list,
                       decision_log: str, x0=None, y0=None,
-                      default_notebook: str = None, module: str = ""):
+                      default_notebook: str = None, module: str = "",
+                      amplifier: int = None):
     """
     Same contract as bo_core.build_optimizer_call, for type 'claude'.
 
@@ -491,6 +509,7 @@ def build_claude_call(opt_cfg: dict, space: list, objective_fn, callback,
         "y0":               y0,
         "notebook":         opt_cfg.get("notebook", default_notebook) or None,
         "module":           module,
+        "amplifier":        amplifier,
     }
     for key in _CLAUDE_KEYS:
         if key in opt_cfg:

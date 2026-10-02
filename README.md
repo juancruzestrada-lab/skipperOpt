@@ -111,6 +111,23 @@ from earlier campaigns. The lab notebook gives it that memory:
 - If writing the entry fails, the campaign's results are saved anyway.
   Interrupted campaigns write no entry.
 
+Reading and adding entries from the command line (`logbook.py`):
+
+```bash
+python3 logbook.py list                       # one line per entry
+python3 logbook.py show                       # latest entry; "show 3 5" or "show all"
+python3 logbook.py search dropout             # entries containing a word
+python3 logbook.py add -m "LED replaced, gain back to 1e5 ADU" --amp 3
+python3 logbook.py add --amp 3                # write the entry in your editor ($EDITOR, default nano)
+python3 logbook.py edit                       # open the whole notebook in the editor
+```
+
+The notebook is located from `config_skipper_claude.json` (or `--config`,
+or `--notebook <path>`). Your entries are headed `operator note`, with the
+amplifier if given (`--amp` is the amplifier number 0-3); Claude is told to
+treat them as first-hand observations. Claude's own entries now also record
+the amplifier, and each campaign tells Claude which amplifier is in use.
+
 Code: `agents/claude_optimizer.py`. The acquisition and objective agents are
 unchanged.
 

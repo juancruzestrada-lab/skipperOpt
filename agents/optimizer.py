@@ -180,6 +180,7 @@ class OptimizerAgent:
                                                   self.module,
                                                   "claude_notebook.md"),
                     module=self.module,
+                    amplifier=self.amplifier,
                 )
             else:
                 minimize_fn, opt_kwargs = bo.build_optimizer_call(
