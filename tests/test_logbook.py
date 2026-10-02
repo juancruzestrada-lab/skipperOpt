@@ -18,7 +18,7 @@ import logbook   # noqa: E402
 
 NOTEBOOK = """# Claude lab notebook
 
-Written by the Claude optimizer at the end of each campaign and read at the start of the next one. Edit or delete entries freely.
+Written by the Claude optimizer at the end of each campaign and read at the start of the next one.
 
 ## 2026-10-01 09:13 | module skipper | 30 measurements (30 new) | best F = 0.018867 at Vdd=-14.5
 
@@ -106,3 +106,9 @@ def test_new_notebook_from_config(tmp_path, capsys, monkeypatch):
     cfg_path.write_text(json.dumps(cfg))
     run(capsys, "--config", str(cfg_path), "add", "-m", "second")
     assert (tmp_path / "other.md").exists()
+
+
+def test_no_edit_command(nb):
+    # The logbook is append-only: there is no command to change past entries.
+    with pytest.raises(SystemExit):
+        logbook.main(["--notebook", nb, "edit"])

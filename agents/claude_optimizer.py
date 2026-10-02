@@ -96,7 +96,9 @@ Reply with the next point to measure."""
 
 NOTEBOOK_SECTION = """
 Lab notebook from previous campaigns on this setup (entries written at the \
-end of earlier campaigns, possibly edited by the operator; oldest first). \
+end of earlier campaigns and by the operator; oldest first). The notebook is \
+append-only: entries are never changed afterwards, so when a later entry \
+corrects an earlier one, the later entry applies. \
 Use it as prior knowledge, not as ground truth: conditions such as \
 temperature, cabling or firmware may have changed since, so when the \
 current measurements disagree with it, trust the current measurements. \

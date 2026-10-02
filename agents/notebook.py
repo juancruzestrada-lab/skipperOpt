@@ -28,7 +28,8 @@ DEFAULT_NOTEBOOK_MAX_CHARS = 30000
 
 PREAMBLE = ("# Claude lab notebook\n\n"
             "Written by the optimizer at the end of each campaign and read by "
-            "Claude at the start of the next one. Edit or delete entries freely.\n")
+            "Claude at the start of the next one. Append-only: past entries are "
+            "never changed; corrections are added as new entries.\n")
 
 
 def load_notebook(path: str, max_chars: int = DEFAULT_NOTEBOOK_MAX_CHARS) -> str:

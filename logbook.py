@@ -15,7 +15,9 @@ Usage
     python3 logbook.py search dropout               entries containing a word
     python3 logbook.py add -m "LED replaced, signal back to 1e5 ADU" --amp 3
     python3 logbook.py add --amp 3                  write the entry in your editor
-    python3 logbook.py edit                         open the whole notebook in your editor
+
+The logbook is append-only: there is no command to change or delete past
+entries. To correct one, add a new entry that says what it corrects.
 
 The notebook is found from a config file, as the optimizer does
 (<output_base>/<module>/claude_notebook.md, or optimizer.notebook if set):
@@ -35,7 +37,8 @@ from datetime import datetime
 
 PREAMBLE = ("# Claude lab notebook\n\n"
             "Written by the optimizer at the end of each campaign and read by "
-            "Claude at the start of the next one. Edit or delete entries freely.\n")
+            "Claude at the start of the next one. Append-only: past entries are "
+            "never changed; corrections are added as new entries.\n")
 
 DEFAULT_CONFIGS = ("config_skipper_claude.json", "config_skipper.json")
 
@@ -162,7 +165,6 @@ def main(argv=None):
     p.add_argument("--amp", type=int, help="Amplifier number, 0-3 "
                    "(config value is one higher).")
     p.add_argument("--title", default="", help="Short title for the header.")
-    sub.add_parser("edit", help="Open the whole notebook in your editor.")
     args = parser.parse_args(argv)
 
     module = ""
@@ -210,10 +212,6 @@ def main(argv=None):
         header = add_entry(path, body, module=module, amp=args.amp, title=args.title)
         print(f"Added to {path}:\n## {header}")
 
-    elif args.command == "edit":
-        if not os.path.exists(path):
-            sys.exit(f"{path} does not exist yet.")
-        subprocess.call(editor() + [path])
 
 
 if __name__ == "__main__":

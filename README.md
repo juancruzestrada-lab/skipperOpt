@@ -111,7 +111,9 @@ a record of every run:
   `"notebook": false` to turn it off, `"notebook_read": false` to keep writing
   entries but not show the notebook to Claude (used by
   `config_compare_claude.json` for a fair comparison).
-- It is a plain Markdown file: read it, correct it, add your own notes.
+- It is a plain Markdown file and **append-only**: past entries are never
+  changed. To correct an entry, add a new one saying what it corrects;
+  Claude is told that later entries take precedence.
 
 Reading and adding entries from the command line (`logbook.py`):
 
@@ -121,7 +123,6 @@ python3 logbook.py show                       # latest entry; "show 3 5" or "sho
 python3 logbook.py search dropout             # entries containing a word
 python3 logbook.py add -m "LED replaced, gain back to 1e5 ADU" --amp 3
 python3 logbook.py add --amp 3                # write the entry in your editor ($EDITOR, default nano)
-python3 logbook.py edit                       # open the whole notebook in the editor
 ```
 
 The notebook is located from `config_skipper_claude.json` (or `--config`,
