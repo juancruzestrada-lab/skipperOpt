@@ -332,7 +332,8 @@ def test_agents_end_to_end_with_claude(tmp_path):
     assert "| module skipper | amp 0 (HDU 1) | claude | 6 measurements (6 new) |" in header
     assert body.startswith("**Run facts** (recorded by the code)")
     assert "config: config.json" in body and "images optimize_" in body
-    assert "Signal (gain, ADU): median" in body and "Overscan noise (ADU)" in body
+    assert "Signal (gain = active minus overscan median, ADU): median" in body
+    assert "Overscan noise (ADU)" in body
     assert body.rstrip().endswith("}}")      # the fake Claude's analysis text comes last
     assert "(empty)" in proc.stdout
     # A second campaign loads it and adds its own entry.

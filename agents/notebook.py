@@ -30,9 +30,6 @@ PREAMBLE = ("# Claude lab notebook\n\n"
             "Written by the optimizer at the end of each campaign and read by "
             "Claude at the start of the next one. Edit or delete entries freely.\n")
 
-# Below this gain (ADU) an image has no usable LED signal.
-NO_SIGNAL_GAIN = 1000
-
 
 def load_notebook(path: str, max_chars: int = DEFAULT_NOTEBOOK_MAX_CHARS) -> str:
     """Notebook text for the prompt ('' if none). Keeps the newest entries."""
@@ -115,10 +112,10 @@ def make_entry(records, param_cfgs, module, amplifier, optimizer, config_name,
         facts.append(line + (". Next: " + "; ".join(others) if others else "") + ".")
     gains = [r["stats"]["gain"] for r in records if "gain" in r.get("stats", {})]
     if gains:
-        n_low = sum(g < NO_SIGNAL_GAIN for g in gains)
-        facts.append(f"- Signal (gain, ADU): median {np.median(gains):.0f}, "
-                     f"max {max(gains):.0f}; {n_low} of {len(gains)} images below "
-                     f"{NO_SIGNAL_GAIN} (no usable signal).")
+        n_neg = sum(g < 0 for g in gains)
+        facts.append(f"- Signal (gain = active minus overscan median, ADU): "
+                     f"median {np.median(gains):.0f}, max {max(gains):.0f}; "
+                     f"{n_neg} of {len(gains)} images with negative gain.")
     noise = [r["stats"]["noise_overscan"] for r in records
              if "noise_overscan" in r.get("stats", {})]
     if noise:

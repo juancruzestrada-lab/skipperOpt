@@ -33,7 +33,7 @@ def test_make_entry_facts_and_header():
     assert body.startswith("**Run facts** (recorded by the code)")
     assert "Optimizer: gp; config: config_compare_gp.json; images optimize_10.fz to optimize_12.fz; 16:09-16:18." in body
     assert "Best F this run: 0.02 at (Vdd=-17.8, delay=24.0), image optimize_11.fz. Next: 0.5 at" in body
-    assert "Signal (gain, ADU): median 1400, max 30000; 1 of 3 images below 1000" in body
+    assert "Signal (gain = active minus overscan median, ADU): median 1400, max 30000; 1 of 3 images with negative gain." in body
     assert "Overscan noise (ADU): median 700, range 650-900." in body
 
 

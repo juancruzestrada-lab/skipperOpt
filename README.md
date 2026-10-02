@@ -99,7 +99,7 @@ a record of every run:
   optimizer, number of measurements and the best point; the body starts with
   **run facts** recorded by the code: config, images, times, best three
   points, signal (gain) and overscan-noise statistics, and how many images had
-  no usable signal (gain < 1000 ADU).
+  negative gain.
 - **Claude runs** add Claude's analysis below the facts: best region, settings
   that gave broken images, which parameters mattered, suggestions.
 - **Claude reads the notebook** at the start of each campaign as prior
