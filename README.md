@@ -143,6 +143,24 @@ without changing the agents, for example a supervisor that reads the
 `stats` from each evaluation and flags bad images before they reach the
 optimizer.
 
+## Optimized parameters
+
+Each entry of `"parameters"` in the config is one optimized dimension
+(`name`, `command_type`, `lta_var`, `bounds`, `precision`, and a `_comment`
+that Claude reads as the parameter's description). With
+`optimize_agents.py`, `lta_var` may also be a **list**: the one value is then
+sent to every listed LTA variable. The Claude and comparison configs use this
+for the horizontal clocks, as in `voltage_skp_lta_v2.sh`:
+
+- `hh` -> `h1ah h1bh h2ch h3ah h3bh` (bounds -2.9 to -1.1 V)
+- `hl` -> `h1al h1bl h2cl h3al h3bl` (bounds -9.9 to -3.6 V)
+
+The bounds keep the script's ordering constraints (th > hh > tl, hh > sh,
+tl > hl > sl, sh > hl) with the other clock voltages at the script's values.
+The original `optimize_sensor_LTA.py` does not understand the list form; use
+it only with configs whose `lta_var` entries are single names (such as
+`config_skipper.json`).
+
 ## GP vs. Claude comparison on one amplifier
 
 Three ready-made configs, all for amplifier 1 (`"amplifier": 2`: the value is

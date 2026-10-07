@@ -11,6 +11,11 @@ Requests
 --------
     initial_exposure()        -> {}
     acquire(x_norm, iteration) -> {"image_path": str | None}
+
+A parameter's "lta_var" may be a list: the one optimized value is then sent
+to every listed LTA variable (e.g. "hh" -> h1ah, h1bh, h2ch, h3ah, h3bh, as
+in the LTA voltage scripts). Single-variable parameters are sent exactly as
+before, through lta_control.set_opt_parameters.
 """
 
 import numpy as np
@@ -21,6 +26,24 @@ import image_analysis as img
 import bo_core        as bo
 
 from .base import Agent
+
+
+def expand_linked(param_cfgs: list, x_norm) -> tuple:
+    """
+    One entry per LTA variable: a parameter whose lta_var is a list becomes
+    one copy per variable, all with the same value.
+    """
+    cfgs, xs = [], []
+    for pcfg, x in zip(param_cfgs, x_norm):
+        if isinstance(pcfg["lta_var"], (list, tuple)):
+            for var in pcfg["lta_var"]:
+                cfgs.append({**pcfg, "lta_var": var,
+                             "name": f"{pcfg['name']} ({var})"})
+                xs.append(x)
+        else:
+            cfgs.append(pcfg)
+            xs.append(x)
+    return cfgs, np.array(xs)
 
 
 class AcquisitionAgent(Agent):
@@ -81,8 +104,8 @@ class AcquisitionAgent(Agent):
 
         # Set parameters
         print("Setting parameters:")
-        lta_ctrl.set_opt_parameters(self.lta, x_values, self.param_cfgs,
-                                    bo.from_normalized)
+        cfgs, xs = expand_linked(self.param_cfgs, x_values)
+        lta_ctrl.set_opt_parameters(self.lta, xs, cfgs, bo.from_normalized)
 
         # Acquire
         lta_ctrl.take_image(

@@ -141,6 +141,40 @@
         30
       ],
       "precision": 0
+    },
+    {
+      "_comment": "Horizontal clock HIGH level, all three phases (hh in voltage_skp_lta_v2.sh). Sets h1ah, h1bh, h2ch, h3ah, h3bh to the same value. Script default -2. Bounds keep the script's constraints th > hh > tl and hh > sh with th=-1, tl=-3.5, sh=-3.",
+      "name": "hh",
+      "command_type": "set",
+      "lta_var": [
+        "h1ah",
+        "h1bh",
+        "h2ch",
+        "h3ah",
+        "h3bh"
+      ],
+      "bounds": [
+        -2.9,
+        -1.1
+      ],
+      "precision": 1
+    },
+    {
+      "_comment": "Horizontal clock LOW level, all three phases (hl in voltage_skp_lta_v2.sh). Sets h1al, h1bl, h2cl, h3al, h3bl to the same value. Script default -4.5. Bounds keep the script's constraints tl > hl > sl and sh > hl with tl=-3.5, sl=-10, sh=-3.",
+      "name": "hl",
+      "command_type": "set",
+      "lta_var": [
+        "h1al",
+        "h1bl",
+        "h2cl",
+        "h3al",
+        "h3bl"
+      ],
+      "bounds": [
+        -9.9,
+        -3.6
+      ],
+      "precision": 1
     }
   ],
   "_examples_direct_and_timing": {
