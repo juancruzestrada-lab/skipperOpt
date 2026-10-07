@@ -152,11 +152,12 @@ that Claude reads as the parameter's description). With
 sent to every listed LTA variable. The Claude and comparison configs use this
 for the horizontal clocks, as in `voltage_skp_lta_v2.sh`:
 
-- `hh` -> `h1ah h1bh h2ch h3ah h3bh` (bounds -2.9 to -1.1 V)
-- `hl` -> `h1al h1bl h2cl h3al h3bl` (bounds -9.9 to -3.6 V)
+- `hh` -> `h1ah h1bh h2ch h3ah h3bh` (bounds -10 to +10 V)
+- `hl` -> `h1al h1bl h2cl h3al h3bl` (bounds -10 to +10 V)
 
-The bounds keep the script's ordering constraints (th > hh > tl, hh > sh,
-tl > hl > sl, sh > hl) with the other clock voltages at the script's values.
+These wide bounds do not enforce the script's ordering constraints (th > hh >
+tl, hh > sh, tl > hl > sl, sh > hl); the parameter descriptions tell Claude
+about them, the GP does not know them.
 The original `optimize_sensor_LTA.py` does not understand the list form; use
 it only with configs whose `lta_var` entries are single names (such as
 `config_skipper.json`).

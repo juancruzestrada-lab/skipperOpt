@@ -63,7 +63,7 @@ def test_hh_hl_set_all_phases(tmp_path):
     per_image = {}
     for _, var, val in sets:
         per_image.setdefault(var, []).append(float(val))
-    for group, (lo, hi) in ((HH, (-2.9, -1.1)), (HL, (-9.9, -3.6))):
+    for group, (lo, hi) in ((HH, (-10, 10)), (HL, (-10, 10))):
         values = np.array([per_image[v] for v in group])      # 5 vars x 3 images
         assert values.shape == (5, 3)
         assert np.all(values == values[0])                    # same value on every phase
