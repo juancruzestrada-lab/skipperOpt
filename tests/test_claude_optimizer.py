@@ -207,6 +207,19 @@ def test_failed_lessons_do_not_break_campaign(capsys):
     assert "could not write its notebook analysis" in capsys.readouterr().out
 
 
+def test_fixed_parameter_does_not_crash():
+    # Equal bounds (a parameter held fixed) used to raise ZeroDivisionError
+    # when Claude's proposal was converted to normalized coordinates.
+    params = [{"name": "Vdd", "bounds": [-23, -10], "precision": 1},
+              {"name": "delay", "bounds": [8, 8], "precision": 0}]
+    client = FakeClient([{"Vdd": -17, "delay": 8}])
+    res = claude_minimize(quadratic, SPACE, n_calls=2, param_cfgs=params,
+                          obj_cfg=OBJ, n_initial_points=1, random_state=1,
+                          client=client)
+    assert len(res.x_iters) == 2
+    assert bo.from_normalized(res.x_iters[-1][1], 8, 8) == 8
+
+
 def test_cost_estimate_by_model():
     u = {"input_tokens": 1_000_000, "output_tokens": 0,
          "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}

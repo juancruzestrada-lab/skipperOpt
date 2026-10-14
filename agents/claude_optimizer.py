@@ -374,7 +374,10 @@ def claude_minimize(func, dimensions, n_calls, param_cfgs, obj_cfg,
         for p in param_cfgs:
             lo, hi = p["bounds"]
             v = float(np.clip(decision["next_point"][p["name"]], lo, hi))
-            x_norm.append(float(np.clip(bo.to_normalized(v, lo, hi), -1.0, 1.0)))
+            # A fixed parameter (lo == hi) has one possible value; any
+            # normalized coordinate maps back to it.
+            x_norm.append(0.0 if hi == lo else
+                          float(np.clip(bo.to_normalized(v, lo, hi), -1.0, 1.0)))
 
         point = ", ".join(f"{p['name']}={decision['next_point'][p['name']]}"
                           for p in param_cfgs)
