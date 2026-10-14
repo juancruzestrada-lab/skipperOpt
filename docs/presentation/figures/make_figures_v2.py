@@ -135,10 +135,81 @@ def fig_shot_noise(name):
     plt.close(fig)
 
 
+FOUR, SIX = "#eb6834", "#1baf7a"          # validated categorical slots 2, 3
+
+
+def fig_four_vs_six(four, six, name):
+    """Claude with 4 vs 6 parameters (same amplifier, LED only): F and signal."""
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(6.4, 3.6), sharex=True,
+                                 gridspec_kw={"height_ratios": [1.15, 1]})
+    for d, color, label, dx in ((four, FOUR, "4 parameters (Oct 2)", -0.12),
+                                (six, SIX, "6 parameters (Oct 14)", 0.12)):
+        pos, neg = d[d.gain > 0], d[d.gain <= 0]
+        a1.scatter(pos.iteration + dx, pos.F, s=14, color=color, edgecolor="white",
+                   linewidth=0.5, zorder=3)
+        a1.scatter(neg.iteration + dx, neg.F, s=14, facecolor="white", edgecolor=color,
+                   linewidth=1.0, zorder=3)
+        best = np.minimum.accumulate(np.where(d.gain > 0, d.F, np.inf))
+        a1.step(d.iteration, best, where="post", color=color, linewidth=1.6, zorder=2,
+                label=label)
+        a1.text(d.iteration.iloc[-1] + 0.8, best[-1], f"{best[-1]:.2f}", color=INK,
+                fontsize=7, va="center")
+        a2.scatter(d.iteration + dx, d.gain, s=12, color=color, edgecolor="white",
+                   linewidth=0.4, zorder=3)
+    for a in (a1, a2):
+        shade(a)
+        a.axvline(30.5, color=MUTED, linewidth=0.8, linestyle="--")
+        a.grid(axis="y", color=GRID, linewidth=0.6)
+        a.set_xlim(0.5, 53)
+    a1.set_yscale("log")
+    a1.set_ylabel("F (log)")
+    a1.legend(fontsize=7, frameon=False, loc="upper right")
+    a2.axhline(0, color=MUTED, linewidth=0.8)
+    a2.set_ylim(-2500, 5000)
+    a2.text(31, 4300, "4-parameter run ends", fontsize=6.5, color=MUTED)
+    a2.set_ylabel("gain (ADU)")
+    a2.set_xlabel("image")
+    a2.set_xticks([1, 8, 20, 30, 40, 50])
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, name))
+    plt.close(fig)
+
+
+def fig_hh_hl(six, name):
+    """How Claude moved the horizontal clock levels, and the signal it got."""
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(6.4, 3.4), sharex=True)
+    for a in (a1, a2):
+        shade(a)
+        a.grid(axis="y", color=GRID, linewidth=0.6)
+    a1.plot(six.iteration, six.hh, color=GP, marker="o", markersize=2.5,
+            linewidth=0.9, label="hh (high level)")
+    a1.plot(six.iteration, six.hl, color=CLAUDE, marker="o", markersize=2.5,
+            linewidth=0.9, label="hl (low level)")
+    for y, c in ((-2, GP), (-4.5, CLAUDE)):
+        a1.axhline(y, color=c, linewidth=0.8, linestyle=":")
+    a1.text(50.6, -2, "script\ndefault", fontsize=6, color=MUTED, va="center")
+    a1.set_ylabel("voltage (V)")
+    a1.set_ylim(-11, 11)
+    a1.legend(fontsize=7, frameon=False, loc="upper right", ncol=2)
+    a2.scatter(six.iteration, six.gain, s=12, color=SIX, edgecolor="white", linewidth=0.4)
+    a2.axhline(0, color=MUTED, linewidth=0.8)
+    a2.set_ylim(-2500, 5000)
+    a2.set_ylabel("gain (ADU)")
+    a2.set_xlabel("image")
+    a2.set_xticks([1, 8, 20, 30, 40, 50])
+    a2.set_xlim(0.5, 53)
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, name))
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     gp = load("Oct-02-2026_results-skipper-004")
     cl = load("Oct-02-2026_results-skipper-005")
     fig_compare_per_image(gp, cl, "compare_per_image.pdf")
     fig_trajectories(gp, cl, "compare_trajectories.pdf")
     fig_shot_noise("shot_noise.pdf")
+    six = load("Oct-14-2026_results-skipper-001")
+    fig_four_vs_six(cl, six, "four_vs_six.pdf")
+    fig_hh_hl(six, "hh_hl.pdf")
     print("figures written")

@@ -49,7 +49,7 @@
 
 \title{From Bayesian Optimization to an Agentic, Claude-Driven Tuning Loop}
 \subtitle{Skipper-CCD operating-point optimization with an LTA readout\\[1mm]
-          \small version 2: logbook and GP vs.\ Claude comparison}
+          \small version 2: logbook, GP vs.\ Claude, and six parameters}
 \author{Juan Cruz Estrada Vigil}
 \institute{}
 \date{\today}
@@ -69,6 +69,7 @@
     \item How Claude thinks and how it converges
     \item The lab logbook
     \item GP vs.\ Claude: same amplifier, same session
+    \item Six parameters: tuning the horizontal clock levels
     \item Lessons and next steps
   \end{enumerate}
 \end{frame}
@@ -633,6 +634,7 @@ python3 logbook.py add --amp 3    # write it in the editor
         Oct 1, amplifiers 1, 2, 0 & \$0.31, \$0.31, \$0.39 \\
         Oct 2, 16:19 & \$0.27 \\
         Oct 2, 17:36 (comparison) & \$0.28 \\
+        Oct 14, 6 param., 42 dec. & \$0.78 \\
         \bottomrule
       \end{tabular}
       {\scriptsize\\ List-price estimates; plus one logbook-entry request per campaign.}
@@ -645,6 +647,113 @@ python3 logbook.py add --amp 3    # write it in the editor
       \end{itemize}
     \end{column}
   \end{columns}
+\end{frame}
+
+% ===========================================================================
+\section{Six parameters: the horizontal clocks}
+% ===========================================================================
+
+\begin{frame}[fragile]{Adding the horizontal clock levels}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \small
+      \begin{itemize}
+        \item The LTA voltage script sets five horizontal clocks from two numbers:
+              \texttt{hh} (high) and \texttt{hl} (low)
+        \item New in the config: a \emph{linked} parameter, one optimized value sent to
+              every listed LTA variable
+        \item Script defaults: $hh=-2$\,V, $hl=-4.5$\,V; bounds opened to $[-10, 10]$\,V
+        \item The script's ordering constraints ($hh > hl$, \dots) are \textbf{not}
+              enforced: the optimizer may try inverted clocks
+        \item Same agents; only the config and the acquisition agent's expansion changed
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+\begin{lstlisting}
+{"name": "hh",
+ "lta_var": ["h1ah","h1bh","h2ch",
+             "h3ah","h3bh"],
+ "bounds": [-10, 10],
+ "precision": 1},
+{"name": "hl",
+ "lta_var": ["h1al","h1bl","h2cl",
+             "h3al","h3bl"],
+ "bounds": [-10, 10],
+ "precision": 1}
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{4 vs.\ 6 parameters: Claude, amplifier 3, LED only}
+  \centering
+  \includegraphics[width=0.80\linewidth]{figures/four_vs_six.pdf}
+
+  \small
+  Line: best $F$ so far among images with gain $>0$; open circles: negative gain.
+  Grey: Sobol start (8 images). Same light, same amplifier, Oct 2 vs.\ Oct 14.
+\end{frame}
+
+\begin{frame}{Result: lower $F$ through more signal}
+  \small
+  \begin{tabular}{p{0.30\textwidth}p{0.27\textwidth}p{0.30\textwidth}}
+    \toprule
+    Claude, amplifier 3 (HDU 4) & 4 parameters (Oct 2) & 6 parameters (Oct 14) \\
+    \midrule
+    Best $F$ & 0.428 & \textbf{0.280} \\
+    Best $F$ within 30 images & 0.428 & \textbf{0.313} \\
+    Last 10 images, median $F$ & 0.50 & \textbf{0.31} \\
+    Gain at best (ADU) & 1590 & \textbf{2251} \\
+    Overscan noise at best (ADU) & 681 & 631 \\
+    Guided images with gain $>0$ & 22 / 22 & 42 / 42 \\
+    Best point $(V_{dd}, V_{drain}, V_r,$ delay) & $(-23,\,-10.5,\,-7.4,\,10)$ & $(-19.5,\,-10.0,\,-7.6,\,10)$ \\
+    $(hh,\ hl)$ & $(-2,\ -4.5)$ fixed & $(+4.6,\ -9.1)$ \\
+    Images, time, cost & 30, $\sim$10 min, \$0.28 & 50, 17 min, \$0.78 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{2mm}
+  \begin{itemize}
+    \item Noise unchanged ($\sim$650--690 ADU); the gain rose by $\sim$40\% $\Rightarrow$ $F$ down $\sim$35\%
+    \item A plateau, not a lucky image: $F = 0.30$--$0.35$ for $hh \approx 4.5$, $hl \approx -8.5$ to $-9.2$
+    \item Larger than the repeat scatter of $F$ ($\pm$0.03--0.05); earlier 4-parameter runs: 0.37--0.47
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{How Claude moved the clocks}
+  \centering
+  \includegraphics[width=0.78\linewidth]{figures/hh_hl.pdf}
+
+  \small
+  After the Sobol start Claude opens the swing step by step: $hh$ up to $\sim$+4.5, $hl$ down
+  to $\sim$$-9$ (dotted: script defaults), and the gain follows.
+\end{frame}
+
+\begin{frame}{What Claude was thinking}
+  \quoteblock{Image 9}{``I'll favor the normal hh $>$ hl ordering.''}
+  \quoteblock{Image 11}{``It had a bigger swing between hh and hl, which might be the key
+    factor driving that gain difference.''}
+  \quoteblock{Image 14}{``Increasing the hh--hl swing seems to improve gain.''}
+  \quoteblock{Image 45}{``There's a sharp cliff around hh $\sim$ 4.7 where gain drops
+    dramatically.''}
+  \small
+  Thinking summaries from the decisions log; the hypothesis (swing $\to$ gain) was formed
+  early and then tested.
+\end{frame}
+
+\begin{frame}{Caveats}
+  \begin{itemize}
+    \item \textbf{Inverted ordering}: $hh=+4.6$\,V is far outside the script's convention;
+          inspect the images (charge transfer, trails, bad columns) before adopting it
+    \item \textbf{$F$ is not image quality}: it rewards gain/noise; a large swing may cost
+          charge-transfer efficiency or spurious charge, which $F$ does not see
+    \item \textbf{Budget}: 50 vs.\ 30 images, but 6 parameters reached 0.313 already by image 30
+    \item \textbf{One run each}: repeat the 6-parameter run (and a GP run on the same space)
+    \item \textbf{Fakes are possible}: earlier narrow-bound runs (Oct 7) gave $F\approx0.06$ from
+          a huge negative gain and high overscan noise; Claude flagged them itself as artifacts
+    \item \textbf{Crash fixed}: a fixed parameter (bounds $[8, 8]$) made Claude's runs divide by
+          zero; fixed and tested
+  \end{itemize}
 \end{frame}
 
 % ===========================================================================
@@ -681,7 +790,9 @@ python3 logbook.py add --amp 3    # write it in the editor
           second amplifier
     \item \textbf{Noise of $F$}: repeated images at a fixed point, to state which differences
           are real
-    \item \textbf{Stopping rule}: today a fixed budget of 30 images
+    \item \textbf{Stopping rule}: today a fixed budget (30 or 50 images)
+    \item \textbf{Six parameters}: inspect images at $hh=+4.6$, $hl=-9.1$; repeat the run;
+          a GP run on the same 6-parameter space; check charge transfer at large swing
     \item \textbf{Better objective}: e.g.\ ``best flat field for astronomy'', with criteria drawn
           from the literature and reviewed before use
   \end{itemize}
@@ -697,6 +808,8 @@ python3 logbook.py add --amp 3    # write it in the editor
           as memory; operators add notes; append-only
     \item Same-session comparison on one amplifier: Claude found a consistent positive-signal
           region with $\sim$2$\times$ lower $F$; the GP's best image was an inverted signal
+    \item Six parameters (adding the horizontal clock levels): Claude raised the gain
+          $\sim$40\% at equal noise, $F$ 0.43 $\to$ 0.28, on a stable plateau
   \end{enumerate}
   \vspace{3mm}
   \centering
