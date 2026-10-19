@@ -9,6 +9,8 @@ import os
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.patches
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -203,6 +205,108 @@ def fig_hh_hl(six, name):
     plt.close(fig)
 
 
+# Raw images (amplifier 3 = HDU 4), regions as in config "detector"
+HDU = 4
+ACTIVE, OVERSCAN = ((2, 30), (16, 56)), ((2, 30), (89, 98))
+VMIN, VMAX = -1500, 4500
+
+
+def read_amp(day, filename):
+    import fitsio
+    im = fitsio.read(os.path.join(DATA, "images", day, filename), ext=HDU).astype(float)
+    (r0, r1), (c0, c1) = OVERSCAN
+    return im - np.median(im[r0:r1, c0:c1])       # ADU above the overscan level
+
+
+def ramp(color, n):
+    """n steps of one hue, light to dark (later images darker)."""
+    rgb = np.array(matplotlib.colors.to_rgb(color))
+    return [tuple(1 - (1 - rgb) * f) for f in np.linspace(0.35, 1.0, n)]
+
+
+def draw_regions(ax):
+    for ((r0, r1), (c0, c1)), ls in ((ACTIVE, "-"), (OVERSCAN, "--")):
+        ax.add_patch(matplotlib.patches.Rectangle((c0 - 0.5, r0 - 0.5), c1 - c0, r1 - r0,
+                     fill=False, edgecolor="#f2c14e", linewidth=0.9, linestyle=ls))
+
+
+def fig_filmstrip(table, day, iterations, color, name):
+    """Selected images along Claude's path, same display scale, plus column profiles."""
+    rows = [table[table.iteration == i].iloc[0] for i in iterations]
+    colors = ramp(color, len(rows))
+    fig = plt.figure(figsize=(6.6, 3.7))
+    gs = fig.add_gridspec(2, len(rows), height_ratios=[1.25, 1], hspace=0.55, wspace=0.08)
+    for k, r in enumerate(rows):
+        ax = fig.add_subplot(gs[0, k])
+        im = ax.imshow(read_amp(day, r.filename), cmap="gray", vmin=VMIN, vmax=VMAX,
+                       origin="lower", interpolation="nearest", aspect="auto")
+        draw_regions(ax)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(True); sp.set_color(colors[k]); sp.set_linewidth(2.2)
+        tag = "Sobol" if r.iteration <= N_SOBOL else "guided"
+        ax.set_title(f"image {int(r.iteration)} ({tag})\nF {r.F:.2f}   gain {r.gain:.0f}",
+                     fontsize=6.8, color=INK)
+    cax = fig.add_axes([0.875, 0.50, 0.012, 0.36])
+    cb = fig.colorbar(im, cax=cax)
+    cb.ax.tick_params(labelsize=6)
+    cb.set_label("ADU above overscan", fontsize=6.5)
+    ax = fig.add_subplot(gs[1, :])
+    (r0, r1), (c0, c1) = ACTIVE
+    ax.axvspan(c0 - 0.5, c1 - 0.5, color=SHADE, zorder=0)
+    ax.axvspan(OVERSCAN[1][0] - 0.5, OVERSCAN[1][1] - 0.5, color=SHADE, zorder=0)
+    ax.text((c0 + c1) / 2, 0.97, "active region", transform=ax.get_xaxis_transform(),
+            ha="center", va="top", fontsize=6.5, color=MUTED)
+    ax.text(93.5, 0.97, "overscan", transform=ax.get_xaxis_transform(),
+            ha="center", va="top", fontsize=6.5, color=MUTED)
+    for k, r in enumerate(rows):
+        prof = np.median(read_amp(day, r.filename)[r0:r1], axis=0)
+        ax.plot(np.arange(prof.size), prof, color=colors[k], linewidth=1.4,
+                label=f"image {int(r.iteration)}")
+    ax.axhline(0, color=MUTED, linewidth=0.8)
+    ax.set_xlim(-0.5, 99.5)
+    ax.set_xlabel("column")
+    ax.set_ylabel("ADU, median of\nactive rows")
+    ax.grid(axis="y", color=GRID, linewidth=0.6)
+    ax.legend(fontsize=6.5, frameon=False, ncol=len(rows), loc="upper right",
+              bbox_to_anchor=(1.0, 1.32))
+    fig.subplots_adjust(left=0.11, right=0.86, top=0.90, bottom=0.12)
+    fig.savefig(os.path.join(HERE, name))
+    plt.close(fig)
+
+
+def fig_best_pair(four, six, name):
+    """Best image of the 4- and 6-parameter runs, same scale, and their profiles."""
+    picks = [("Oct-02-2026", four.loc[four[four.gain > 0].F.idxmin()], FOUR, "4 parameters"),
+             ("Oct-14-2026", six.loc[six[six.gain > 0].F.idxmin()], SIX, "6 parameters")]
+    fig = plt.figure(figsize=(6.6, 2.6))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 1.5], wspace=0.35)
+    (r0, r1), _ = ACTIVE
+    axp = fig.add_subplot(gs[0, 2])
+    for k, (day, r, color, label) in enumerate(picks):
+        ax = fig.add_subplot(gs[0, k])
+        img = read_amp(day, r.filename)
+        im = ax.imshow(img, cmap="gray", vmin=VMIN, vmax=VMAX, origin="lower",
+                       interpolation="nearest", aspect="auto")
+        draw_regions(ax)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(True); sp.set_color(color); sp.set_linewidth(2.2)
+        ax.set_title(f"{label}: image {int(r.iteration)}\nF {r.F:.2f}   gain {r.gain:.0f}",
+                     fontsize=7, color=INK)
+        axp.plot(np.median(img[r0:r1], axis=0), color=color, linewidth=1.4, label=label)
+    axp.axhline(0, color=MUTED, linewidth=0.8)
+    axp.axvspan(ACTIVE[1][0] - 0.5, ACTIVE[1][1] - 0.5, color=SHADE, zorder=0)
+    axp.axvspan(OVERSCAN[1][0] - 0.5, OVERSCAN[1][1] - 0.5, color=SHADE, zorder=0)
+    axp.set_xlabel("column")
+    axp.set_ylabel("ADU, median of active rows")
+    axp.grid(axis="y", color=GRID, linewidth=0.6)
+    axp.legend(fontsize=6.5, frameon=False)
+    fig.subplots_adjust(left=0.02, right=0.99, top=0.82, bottom=0.17)
+    fig.savefig(os.path.join(HERE, name))
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     gp = load("Oct-02-2026_results-skipper-004")
     cl = load("Oct-02-2026_results-skipper-005")
@@ -212,4 +316,7 @@ if __name__ == "__main__":
     six = load("Oct-14-2026_results-skipper-001")
     fig_four_vs_six(cl, six, "four_vs_six.pdf")
     fig_hh_hl(six, "hh_hl.pdf")
+    fig_filmstrip(cl, "Oct-02-2026", [1, 4, 11, 25, 28], FOUR, "images_oct02.pdf")
+    fig_filmstrip(six, "Oct-14-2026", [1, 4, 13, 30, 50], SIX, "images_oct14.pdf")
+    fig_best_pair(cl, six, "images_best.pdf")
     print("figures written")

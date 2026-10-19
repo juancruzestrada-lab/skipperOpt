@@ -729,6 +729,39 @@ python3 logbook.py add --amp 3    # write it in the editor
   to $\sim$$-9$ (dotted: script defaults), and the gain follows.
 \end{frame}
 
+\begin{frame}{The images: Oct 2, 4 parameters}
+  \centering
+  \includegraphics[width=0.84\linewidth]{figures/images_oct02.pdf}
+
+  \small
+  Amplifier 3 (HDU 4), overscan level subtracted, same grey scale in every panel.
+  Boxes: active region (solid) and overscan (dashed), where $F$ is measured.
+  Images where the best $F$ so far improved.
+\end{frame}
+
+\begin{frame}{The images: Oct 14, 6 parameters}
+  \centering
+  \includegraphics[width=0.84\linewidth]{figures/images_oct14.pdf}
+
+  \small
+  Same display as the previous slide. Image 1 (Sobol, $F = 72$) has no signal; by image 13
+  the light is clearly visible, and it keeps growing up to image 50.
+\end{frame}
+
+\begin{frame}{Best images side by side}
+  \centering
+  \includegraphics[width=0.92\linewidth]{figures/images_best.pdf}
+
+  \vspace{1mm}
+  \begin{itemize}\small
+    \item Same LED, same exposure, same display scale: the 6-parameter image is brighter at the
+          same noise, $\sim$40\% more signal in the active region
+    \item In every image the signal falls off from left to right and reaches the overscan
+          level near column 85 --- the same shape on both days; worth understanding before
+          adopting the new clock levels
+  \end{itemize}
+\end{frame}
+
 \begin{frame}{What Claude was thinking}
   \quoteblock{Image 9}{``I'll favor the normal hh $>$ hl ordering.''}
   \quoteblock{Image 11}{``It had a bigger swing between hh and hl, which might be the key
@@ -809,7 +842,8 @@ python3 logbook.py add --amp 3    # write it in the editor
     \item Same-session comparison on one amplifier: Claude found a consistent positive-signal
           region with $\sim$2$\times$ lower $F$; the GP's best image was an inverted signal
     \item Six parameters (adding the horizontal clock levels): Claude raised the gain
-          $\sim$40\% at equal noise, $F$ 0.43 $\to$ 0.28, on a stable plateau
+          $\sim$40\% at equal noise, $F$ 0.43 $\to$ 0.28, on a stable plateau; the images
+          show it directly
   \end{enumerate}
   \vspace{3mm}
   \centering
