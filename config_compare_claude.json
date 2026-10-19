@@ -44,12 +44,12 @@
     "max_baseline": 1000,
     "penalties": [
       {
-        "_comment": "Uncomment to activate. Penalizes inverted gain.",
+        "_comment": "Active: penalizes inverted gain, F += 0.5*(-gain)**0.333 when gain < 0. F itself uses |gain|, so without this an inverted image can score as well as a real one. Images with gain > 0 are unaffected.",
         "type": "negative_gain",
         "coefficient": 0.5,
         "power": 0.333,
         "params": {},
-        "_disabled": true
+        "_disabled": false
       },
       {
         "_comment": "Penalizes overscan noise exceeding gain.",
